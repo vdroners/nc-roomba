@@ -1,0 +1,51 @@
+<?php
+
+declare(strict_types=1);
+
+namespace OCA\NcRoomba\Settings;
+
+use OCA\NcRoomba\AppInfo\Application;
+use OCA\NcRoomba\Service\RobotService;
+use OCP\AppFramework\Http\TemplateResponse;
+use OCP\IURLGenerator;
+use OCP\Settings\ISettings;
+use OCP\Util;
+
+class AdminSettings implements ISettings
+{
+	public function __construct(
+		private RobotService $robots,
+		private IURLGenerator $urlGenerator,
+	) {
+	}
+
+	public function getForm(): TemplateResponse
+	{
+		Util::addStyle(Application::APP_ID, 'nc-roomba-theme');
+
+		$boot = $this->robots->adminBootstrap();
+		$params = [
+			'bridge_url' => $boot['bridge_url'],
+			'operator_group' => $boot['operator_group'],
+			'retention_days' => $boot['retention_days'],
+			'robot' => $boot['robot'],
+			'save_url' => $this->urlGenerator->linkToRoute('nc_roomba.settings.adminSave'),
+			'onboard_url' => $this->urlGenerator->linkToRoute('nc_roomba.settings.onboard'),
+			'discover_url' => $this->urlGenerator->linkToRoute('nc_roomba.robot.discover'),
+			'retention_dry_run_url' => $this->urlGenerator->linkToRoute('nc_roomba.settings.retentionDryRun'),
+			'retention_apply_url' => $this->urlGenerator->linkToRoute('nc_roomba.settings.retentionApply'),
+		];
+
+		return new TemplateResponse(Application::APP_ID, 'admin', $params);
+	}
+
+	public function getSection(): string
+	{
+		return Application::APP_ID;
+	}
+
+	public function getPriority(): int
+	{
+		return 10;
+	}
+}

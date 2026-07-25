@@ -1,0 +1,155 @@
+'use strict'
+
+/**
+ * nc-roomba-bridge — HTTP/SSE front end for the single local MQTT session.
+ *
+ * Reachable only from the `nc-roomba-net` Docker network (the compose file
+ * publishes no public host port); the Nextcloud app proxies every call, so the
+ * browser never talks to the robot or this process directly.
+ *
+ * Env: BLID, PASSWORD, ROBOT_IP, FIRMWARE_VERSION=2, ROOMBA_MOCK=0|1, PORT=8080
+ */
+
+const express = require('express')
+
+const { RobotManager } = require('./lib/robotManager')
+const { needsAttention } = require('./lib/stateNormalizer')
+
+const PORT = Number(process.env.PORT || 8080)
+const HOST = process.env.HOST || '0.0.0.0'
+
+const app = express()
+app.disable('x-powered-by')
+app.use(express.json({ limit: '256kb' }))
+
+// CORS is off by default: the only legitimate caller is the Nextcloud PHP app,
+// server-to-server on the Docker network. Set BRIDGE_CORS_ORIGIN for local
+// debugging from a browser.
+if (process.env.BRIDGE_CORS_ORIGIN) {
+	const cors = require('cors')
+	app.use(cors({ origin: process.env.BRIDGE_CORS_ORIGIN }))
+}
+
+const manager = new RobotManager(process.env)
+
+/**
+ * @param {import('express').Response} res
+ * @param {unknown} err
+ */
+function sendError(res, err) {
+	const status = err && Number.isInteger(err.status) ? err.status : 500
+	const message = err && err.message ? err.message : String(err)
+	res.status(status).json({ ok: false, error: message })
+}
+
+/**
+ * @param {(req: import('express').Request, res: import('express').Response) => Promise<void>} handler
+ * @returns {import('express').RequestHandler}
+ */
+function wrap(handler) {
+	return (req, res) => {
+		Promise.resolve()
+			.then(() => handler(req, res))
+			.catch((err) => sendError(res, err))
+	}
+}
+
+app.get('/health', (req, res) => {
+	res.json(manager.health())
+})
+
+app.get('/discover', wrap(async (req, res) => {
+	const result = await manager.discover(Number(req.query.timeout_ms || 6000))
+	res.json({ ok: true, ...result })
+}))
+
+app.post('/onboard/get-password', wrap(async (req, res) => {
+	const creds = await manager.getPassword((req.body || {}).ip)
+	res.json({ ok: true, ...creds })
+}))
+
+app.post('/connect', wrap(async (req, res) => {
+	const health = manager.connect(req.body || {})
+	res.status(health.connected || health.mock ? 200 : 202).json({ ok: true, ...health })
+}))
+
+app.get('/state', (req, res) => {
+	const state = manager.getState()
+	res.json({ ok: true, needs_attention: needsAttention(state), state })
+})
+
+// SSE: the app's live pipeline. Every push is the same normalized DTO that
+// GET /state returns, so the poll fallback and the stream stay interchangeable.
+app.get('/stream', (req, res) => {
+	res.writeHead(200, {
+		'Content-Type': 'text/event-stream',
+		'Cache-Control': 'no-cache, no-transform',
+		Connection: 'keep-alive',
+		'X-Accel-Buffering': 'no',
+	})
+
+	const send = (dto) => {
+		res.write(`event: state\ndata: ${JSON.stringify(dto)}\n\n`)
+	}
+
+	send(manager.getState())
+	const unsubscribe = manager.subscribe(send)
+	// Comment frames keep intermediaries from timing the connection out.
+	const keepAlive = setInterval(() => res.write(': keep-alive\n\n'), 15_000)
+
+	req.on('close', () => {
+		clearInterval(keepAlive)
+		unsubscribe()
+		res.end()
+	})
+})
+
+app.post('/action/:name', wrap(async (req, res) => {
+	const result = await manager.action(req.params.name)
+	res.json({ ...result, state: manager.getState() })
+}))
+
+app.get('/preferences', wrap(async (req, res) => {
+	res.json({ ok: true, preferences: await manager.getPreferences() })
+}))
+
+app.post('/preferences', wrap(async (req, res) => {
+	res.json({ ok: true, preferences: await manager.setPreferences(req.body || {}) })
+}))
+
+app.get('/schedule', wrap(async (req, res) => {
+	res.json({ ok: true, week: await manager.getSchedule() })
+}))
+
+app.post('/schedule', wrap(async (req, res) => {
+	const body = req.body || {}
+	res.json({ ok: true, week: await manager.setSchedule(body.week || body) })
+}))
+
+app.get('/bbrun', wrap(async (req, res) => {
+	res.json({ ok: true, ...(await manager.getBbrun()) })
+}))
+
+app.use((req, res) => {
+	res.status(404).json({ ok: false, error: `no route ${req.method} ${req.path}` })
+})
+
+// Auto-connect on boot when credentials are already configured (or in mock
+// mode); otherwise the app onboards first and calls POST /connect.
+if (manager.configured) {
+	manager.connect()
+}
+
+const server = app.listen(PORT, HOST, () => {
+	// eslint-disable-next-line no-console
+	console.log(`[nc-roomba-bridge] listening on ${HOST}:${PORT} (mock=${manager.mock ? 1 : 0})`)
+})
+
+const shutdown = () => {
+	manager.disconnect()
+	server.close(() => process.exit(0))
+}
+process.on('SIGTERM', shutdown)
+process.on('SIGINT', shutdown)
+
+module.exports = { app, manager, server }

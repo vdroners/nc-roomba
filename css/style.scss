@@ -1,0 +1,191 @@
+
+:root {
+  --nc-app-accent: #2bbbad;
+  --nc-app-accent-soft: rgba(43, 187, 173, 0.15);
+}
+
+.nc-roomba-app-shell {
+  min-height: 100%;
+  background: var(--color-main-background);
+  color: var(--color-main-text);
+  display: flex;
+  flex-direction: column;
+}
+
+.nc-roomba-status-strip {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  padding: 0.6rem 1rem;
+  background: var(--color-main-background);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 1px 0 var(--color-border-dark);
+}
+
+.nc-roomba-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--border-radius-pill, 999px);
+  background: var(--color-background-dark);
+  font-size: 0.85rem;
+}
+
+.nc-roomba-chip.warn { background: rgba(255, 152, 0, 0.2); }
+.nc-roomba-chip.danger { background: rgba(244, 67, 54, 0.2); }
+.nc-roomba-chip.ok { background: var(--nc-app-accent-soft); color: var(--nc-app-accent); }
+
+.nc-roomba-nav {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+}
+
+.nc-roomba-nav button {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  color: var(--color-main-text);
+  border-radius: var(--border-radius-element, 8px);
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+}
+
+.nc-roomba-nav button.active {
+  border-color: var(--nc-app-accent);
+  background: var(--nc-app-accent-soft);
+}
+
+.nc-roomba-main {
+  padding: 1rem;
+  flex: 1;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.nc-roomba-control-pad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+
+.nc-roomba-control-pad button {
+  min-height: 48px;
+  border-radius: var(--border-radius-element, 8px);
+  border: 1px solid var(--color-border);
+  background: var(--color-primary-element, var(--nc-app-accent));
+  color: var(--color-primary-element-text, #fff);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nc-roomba-control-pad button.secondary {
+  background: var(--color-background-dark);
+  color: var(--color-main-text);
+}
+
+.nc-roomba-control-pad button.danger {
+  background: var(--color-error, #f44336);
+}
+
+.nc-roomba-panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--border-radius-large, 12px);
+  padding: 0.9rem 1rem;
+  margin: 0.75rem 0;
+  background: var(--color-main-background);
+}
+
+.nc-roomba-panel h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.nc-roomba-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.nc-roomba-timeline .band {
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  background: var(--nc-app-accent-soft);
+  font-size: 0.8rem;
+}
+
+.nc-roomba-week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.nc-roomba-week-grid .day {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.nc-roomba-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(360px, 92vw);
+  height: 100%;
+  background: var(--color-main-background);
+  border-left: 1px solid var(--color-border);
+  box-shadow: -4px 0 16px rgba(0,0,0,0.15);
+  z-index: 100;
+  padding: 1rem;
+  overflow: auto;
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+}
+
+.nc-roomba-drawer.open { transform: translateX(0); }
+
+.nc-roomba-map-fallback {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--color-border);
+  border-radius: 12px;
+  color: var(--color-text-maxcontrast);
+  text-align: center;
+  padding: 1rem;
+}
+
+.nc-roomba-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nc-roomba-dialog {
+  background: var(--color-main-background);
+  color: var(--color-main-text);
+  border-radius: 12px;
+  padding: 1.25rem;
+  width: min(420px, 92vw);
+  border: 1px solid var(--color-border);
+}
+
+@media (max-width: 390px) {
+  .nc-roomba-control-pad { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .nc-roomba-week-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -1,0 +1,21 @@
+services:
+  nc_roomba_bridge:
+    build: ./bridge
+    container_name: nc_roomba_bridge
+    restart: unless-stopped
+    environment:
+      PORT: "8080"
+      ROOMBA_MOCK: "${ROOMBA_MOCK:-1}"
+      BLID: "${BLID:-}"
+      PASSWORD: "${PASSWORD:-}"
+      ROBOT_IP: "${ROBOT_IP:-}"
+      FIRMWARE_VERSION: "${FIRMWARE_VERSION:-2}"
+    # Host loopback only for gates/debug — not LAN-public.
+    ports:
+      - "127.0.0.1:18791:8080"
+    networks:
+      - nc-roomba-net
+
+networks:
+  nc-roomba-net:
+    name: nc-roomba-net
