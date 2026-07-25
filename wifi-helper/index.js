@@ -21,6 +21,20 @@ const app = express()
 app.disable('x-powered-by')
 app.use(express.json({ limit: '64kb' }))
 
+// Request-level logging: Soft-AP joins fail in ways only visible live, so log
+// method/path on entry and status/duration on finish (never the body — it
+// carries the home Wi-Fi password).
+app.use((req, res, next) => {
+	const started = Date.now()
+	// eslint-disable-next-line no-console
+	console.log(`--> ${req.method} ${req.path}`)
+	res.on('finish', () => {
+		// eslint-disable-next-line no-console
+		console.log(`<-- ${req.method} ${req.path} ${res.statusCode} ${Date.now() - started}ms`)
+	})
+	next()
+})
+
 /**
  * @param {import('express').Request} req
  * @param {import('express').Response} res

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-07-25
+
+### Fixed
+
+- Soft-AP join reported success without actually associating: `iw connect` returns
+  as soon as the request is queued, so the link could stay `NO-CARRIER` while the
+  helper went on to assign the static IP and ping the gateway. `joinSoftAp` now
+  calls a new `waitAssociated()` that polls `iw dev <iface> link` for the real
+  "Connected to" carrier before proceeding, and disconnects + retries on failure.
+  Verified live against a Roomba 960 Soft-AP: association is now solid (was 0%).
+- Host Wi-Fi regulatory domain was left at the unset `country 00`, which throttles
+  channel-1 TX power enough that association to a weak open Soft-AP can silently
+  fail. `ensureRadioUp()` now runs `iw reg set US` (override via
+  `ROOMBA_WIFI_REGDOM`) and disables power-save for the short-lived Soft-AP session.
+
+### Added
+
+- Request-level logging in the Wi-Fi helper (`--> METHOD /path` / `<-- ... status
+  ms`, body never logged since it carries the home Wi-Fi password) so live Soft-AP
+  attempts are debuggable from `journalctl -u nc-roomba-wifi-helper`.
+
 ## [0.3.1] - 2026-07-25
 
 ### Fixed

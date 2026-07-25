@@ -46,19 +46,82 @@ async function run(cmd, args, opts = {}) {
 	})
 }
 
+const REGDOM = process.env.ROOMBA_WIFI_REGDOM || 'US'
+
 /**
  * A prior Soft-AP session leaves the radio down + unmanaged, and NetworkManager
  * silently returns an empty scan list in that state. Always restore
  * managed + up before scanning.
+ *
+ * The regulatory domain is set to a real country (default US) as well: an
+ * unset "country 00" regdom limits channel-1 TX power enough that association
+ * to a weak open Soft-AP can silently fail.
  */
 async function ensureRadioUp() {
 	if (process.env.ROOMBA_WIFI_HELPER_MOCK === '1') {
 		return
 	}
 	await run('nmcli', ['radio', 'wifi', 'on']).catch(() => {})
+	await run('iw', ['reg', 'set', REGDOM]).catch(() => {})
 	await run('nmcli', ['device', 'set', IFACE, 'managed', 'yes']).catch(() => {})
 	await run('ip', ['link', 'set', IFACE, 'up']).catch(() => {})
 	await new Promise((r) => setTimeout(r, 1200))
+}
+
+/**
+ * Handing the radio to `managed no` drops the link asynchronously, so an
+ * immediate `iw connect` races it and fails with "Network is down (-100)".
+ * Bring the link up and wait for the kernel to report the UP flag.
+ *
+ * @param {number} [timeoutMs]
+ */
+async function waitLinkUp(timeoutMs = 15_000) {
+	const deadline = Date.now() + timeoutMs
+	let lastErr = null
+	while (Date.now() < deadline) {
+		await run('ip', ['link', 'set', IFACE, 'up']).catch((e) => { lastErr = e })
+		try {
+			const { stdout } = await run('ip', ['-br', 'link', 'show', IFACE])
+			if (/[<,]UP[,>]/.test(stdout)) {
+				return true
+			}
+		} catch (e) {
+			lastErr = e
+		}
+		await new Promise((r) => setTimeout(r, 500))
+	}
+	const err = new Error(`interface ${IFACE} never came up${lastErr ? `: ${lastErr.message}` : ''}`)
+	err.status = 503
+	throw err
+}
+
+/**
+ * `iw connect` returns as soon as the request is queued — it does NOT wait for
+ * the association/carrier to actually come up. On some drivers the connect
+ * "succeeds" while the link stays NO-CARRIER, which then makes the static IP
+ * assignment and gateway ping fail with no obvious cause. Poll `iw link` until
+ * the kernel reports we are actually associated.
+ *
+ * @param {number} [timeoutMs]
+ * @returns {Promise<{connected:boolean,ssid:string|null}>}
+ */
+async function waitAssociated(timeoutMs = 12_000) {
+	const deadline = Date.now() + timeoutMs
+	let last = 'Not connected.'
+	while (Date.now() < deadline) {
+		try {
+			const { stdout } = await run('iw', ['dev', IFACE, 'link'])
+			last = stdout.trim()
+			if (/Connected to/i.test(stdout)) {
+				const m = stdout.match(/SSID:\s*(.+)/)
+				return { connected: true, ssid: m ? m[1].trim() : null }
+			}
+		} catch { /* transient while associating */ }
+		await new Promise((r) => setTimeout(r, 500))
+	}
+	const err = new Error(`association never completed on ${IFACE} (last: ${last})`)
+	err.status = 502
+	throw err
 }
 
 /**
@@ -161,17 +224,42 @@ async function joinSoftAp(ap) {
 	await ensureRadioUp()
 	// Prefer iw for open Soft-AP (NM often mis-classifies as WEP).
 	await run('nmcli', ['device', 'set', IFACE, 'managed', 'no']).catch(() => {})
-	await run('ip', ['link', 'set', IFACE, 'up'])
+	await waitLinkUp()
+	// Soft-AP is short-lived; power-save drops TX and makes DHCP/MQTT fail.
+	await run('iw', ['dev', IFACE, 'set', 'power_save', 'off']).catch(() => {})
 	await run('iw', ['dev', IFACE, 'disconnect']).catch(() => {})
 
-	const connectArgs = ['dev', IFACE, 'connect', '-w', ssid]
-	if (freq) connectArgs.push(String(freq))
-	if (bssid) connectArgs.push(bssid)
-	try {
-		await run('iw', connectArgs, { timeout: 30_000 })
-	} catch (e) {
-		// Retry without wait / without BSSID
-		await run('iw', ['dev', IFACE, 'connect', ssid], { timeout: 20_000 })
+	const withFreq = ['dev', IFACE, 'connect', '-w', ssid]
+	if (freq) withFreq.push(String(freq))
+	if (bssid) withFreq.push(bssid)
+	const attempts = [
+		withFreq,
+		['dev', IFACE, 'connect', '-w', ssid],
+		['dev', IFACE, 'connect', ssid],
+	]
+
+	let joined = false
+	let lastErr = null
+	for (const args of attempts) {
+		for (let retry = 0; retry < 2 && !joined; retry++) {
+			try {
+				await waitLinkUp()
+				await run('iw', args, { timeout: 30_000 })
+				// iw connect returns before association finishes — verify carrier.
+				await waitAssociated()
+				joined = true
+			} catch (e) {
+				lastErr = e
+				await run('iw', ['dev', IFACE, 'disconnect']).catch(() => {})
+				await new Promise((r) => setTimeout(r, 1500))
+			}
+		}
+		if (joined) break
+	}
+	if (!joined) {
+		const err = new Error(`could not associate with ${ssid}: ${lastErr ? lastErr.message : 'unknown error'}`)
+		err.status = 502
+		throw err
 	}
 
 	await run('ip', ['addr', 'flush', 'dev', IFACE]).catch(() => {})
@@ -261,6 +349,8 @@ module.exports = {
 	SOFTAP_SSID_RE,
 	channelToFreq,
 	ensureRadioUp,
+	waitLinkUp,
+	waitAssociated,
 	scanWifi,
 	scanRoombaAps,
 	joinSoftAp,
