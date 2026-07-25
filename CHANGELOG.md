@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-25
+
+### Changed
+
+- **Onboarding guidance reordered around what actually works.** Live onboarding
+  of a Roomba 960 (Alfred) showed the Soft-AP factory path is unreliable on the
+  960 — it associates at Wi-Fi L2 but often serves no setup service (no DHCP /
+  MQTT at `192.168.10.1`), even after factory reset. The reliable, app-free
+  route is: get the robot on Wi-Fi (iRobot app once, if needed), then
+  **hold HOME → Retrieve credentials** over the LAN. The admin page now opens
+  and leads with Auto-discover + hold-HOME (a success NoteCard), and the Soft-AP
+  wizard is labelled a fallback.
+- `docs/OPERATOR.md` leads with the hold-HOME LAN takeover; Soft-AP is the
+  fallback with the 960 setup-service caveat and full-minute battery-pull
+  recovery. Added a troubleshooting row for `battery 0 / not_ready 15` = robot
+  off the dock (not a connection fault) and for the 960 "gateway never
+  responded" Soft-AP case.
+
+### Added
+
+- `docs/REVIEW.md` — a plain-language tour of every improvement (0.1.0 → 0.4.0),
+  Alfred's current live state, and how to review the app yourself.
+- SetupWizard shows the 960 Soft-AP caveat + battery-pull tip and points to the
+  hold-HOME path when the robot is already on Wi-Fi.
+- Documented `.env` `BLID` / `PASSWORD` / `ROBOT_IP` as the headless
+  auto-reconnect persistence for the bridge (verified across a container
+  recreate).
+
 ## [0.3.2] - 2026-07-25
 
 ### Fixed

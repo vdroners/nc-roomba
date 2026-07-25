@@ -14,10 +14,45 @@ only to Nextcloud. The UI uses the robot’s **display name** everywhere
 - Host Soft-AP helper: `nc-roomba-wifi-helper` on `:8091` (Wi‑Fi radio on the GCS host)
 - For a **real** robot: bridge must run with `ROOMBA_MOCK=0` (see `.env`)
 
-## 1. Factory Soft-AP setup (preferred — no iRobot app)
+## 1. Recommended: hold-HOME LAN takeover (robot already on Wi‑Fi)
 
-Supported on Soft-AP fw2 robots (Roomba 960 / 980 class). Newer BLE-only models
-are out of scope.
+This is the reliable, app-free path once the robot is on your home Wi‑Fi. If a
+brand-new robot isn't on Wi‑Fi yet, get it on **once** with the iRobot app
+(that's the only time the app is needed — it also updates firmware), then take
+over here. NC Roomba pulls the robot's **local** MQTT password straight from the
+robot; you never store or use your iRobot cloud login.
+
+1. Give the robot a **DHCP reservation** so its LAN IP is stable, and confirm
+   it's on the same `10.0.0.x` LAN the bridge can reach.
+2. Open **Administration → NC Roomba → Advanced**.
+3. Click **Auto discover** — it lists `robotname`, IP, and BLID from a LAN
+   `:8883` scan. Pick the robot (fills IP + BLID).
+4. On the robot, **press and hold HOME (~2 s) until it beeps / the Wi‑Fi ring
+   pulses**, then within ~60 s click **Retrieve credentials (hold HOME)**.
+5. **Save** (password is stored encrypted) and **Test connection**.
+6. Force-quit the iRobot app (single MQTT client — the robot allows one).
+
+CLI equivalent (host → bridge): `POST /onboard/get-password {"ip":"<robot-ip>"}`.
+
+**Persistence:** the app stores the encrypted creds in Nextcloud. For a headless
+guarantee that the bridge reconnects on restart, also set `BLID` / `PASSWORD` /
+`ROBOT_IP` in `.env` (gitignored). Verified: recreating the bridge container
+then reconnects with no hold-HOME and no app.
+
+## 2. Fallback: factory Soft-AP setup (robot not yet on any Wi‑Fi)
+
+Only needed for a robot that can't be app-provisioned at all. Supported on
+Soft-AP fw2 robots (Roomba 960 / 980 class); newer BLE-only models are out of
+scope.
+
+> **Roomba 960 caveat (learned the hard way):** the 960's Soft-AP often
+> *associates but serves no setup service* — it beacons `Roomba-<BLID>` and
+> lets you join, but answers nothing at `192.168.10.1` (no DHCP / MQTT), so
+> provisioning stalls at "gateway never responded". A button-only factory reset
+> may not fix it. The documented recovery is a **full-minute battery pull**
+> (turn the robot over, remove the battery, wait a full minute, reinstall),
+> then re-enter Soft-AP. If it still won't serve setup, use path 1 via the
+> iRobot app instead.
 
 1. Open **Administration → NC Roomba**.
 2. **Wizard → Name** — set the display name (e.g. Alfred).
@@ -46,14 +81,11 @@ CLI dogfood (host): `node scripts/softap-dogfood.js` with
 After Soft-AP (or phone) Wi‑Fi join we use **local MQTT only**. Close the iRobot
 app when using NC Roomba (single MQTT connection).
 
-## 3. Advanced: Auto discover + Hold-HOME
+## 3. Rotating the local password
 
-Use when the robot is already on LAN Wi‑Fi and you need to rotate the local password.
-
-1. In **Administration → NC Roomba → Advanced**, click **Auto discover**.
-2. On the robot, **press and hold HOME** (~2 seconds) until tones / Wi‑Fi pulse.
-3. Click **Retrieve credentials (hold HOME)** — fetches the **local** MQTT password
-   (not your iRobot account password), saves encrypted, then **Test connection**.
+The hold-HOME flow in §1 is also how you rotate the local MQTT password on an
+already-connected robot: Advanced → hold HOME until tones → **Retrieve
+credentials (hold HOME)** → Save → Test connection.
 
 ### Local password vs account password
 
@@ -84,7 +116,9 @@ never paste the iRobot cloud login.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Soft-AP scan empty | Robot not in HOME+SPOT Soft-AP | Re-enter Soft-AP; helper Wi‑Fi radio up |
+| Soft-AP joins but `gateway never responded` | 960 Soft-AP serving no setup service (associates, no DHCP/MQTT at `192.168.10.1`) | Full-minute battery pull, re-enter Soft-AP; if still dead, provision via iRobot app then use §1 hold-HOME |
 | Soft-AP join but provision times out | IP stack not up / no spoken prompt | Wait for voice; retry; stay near robot |
+| `battery 0` / `not_ready 15`, but connected | Robot off the dock / not reporting charge | Dock the robot; values populate — this is not a connection fault |
 | Helper unauthorized / 502 | Helper down or bad token | `systemctl status nc-roomba-wifi-helper`; check `.env` token |
 | `Could not resolve host: nc-roomba-bridge` | Wrong DNS spelling | Use `http://nc_roomba_bridge:8080` (underscores) |
 | Discover / onboard / test all fail | Bridge URL wrong or bridge down | Check admin Bridge URL; `docker ps` for `nc_roomba_bridge` |

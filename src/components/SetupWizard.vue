@@ -1,10 +1,18 @@
 <template>
 	<section class="nc-roomba-wizard">
 		<header class="nc-roomba-wizard__header">
-			<h4>Factory setup wizard</h4>
+			<h4>Factory Soft-AP wizard <span class="nc-roomba-muted">(fallback)</span></h4>
 			<p class="nc-roomba-muted">
-				Put a factory-reset Roomba (960/980 Soft-AP class) on your home Wi‑Fi without the
-				iRobot app, then open local MQTT. 2.4&nbsp;GHz only.
+				<strong>If the robot is already on your Wi‑Fi</strong> (e.g. set up once via the iRobot
+				app), skip this and use <em>Advanced → Auto discover → Retrieve credentials (hold HOME)</em>
+				below — it is the reliable, app-free path. Use this Soft-AP wizard only when a robot
+				cannot be put on Wi‑Fi any other way.
+			</p>
+			<p class="nc-roomba-muted">
+				This joins a factory-reset Roomba (960/980 Soft-AP class) to your home Wi‑Fi
+				(2.4&nbsp;GHz only). Note: some Roomba 960 units advertise a Soft-AP but serve no
+				setup service — if provision stalls at “gateway never responded”, do a full-minute
+				battery pull, or provision via the iRobot app once and use the hold-HOME path.
 			</p>
 			<ol class="nc-roomba-wizard__steps">
 				<li
@@ -62,6 +70,11 @@
 				<li>Press <strong>CLEAN</strong> until all lights flash, then release (factory reset path).</li>
 				<li>Press <strong>HOME + SPOT</strong> together until you hear a melody and the Wi‑Fi ring blinks green.</li>
 				<li>Click <strong>Scan Soft-AP</strong>. When the host joins, the robot should say it is connected.</li>
+				<li v-if="true" class="nc-roomba-muted">
+					960 stuck at “gateway never responded”? Remove the battery for a
+					<strong>full minute</strong>, reinstall, then repeat — its Soft-AP setup service
+					sometimes doesn’t start until a full power cycle.
+				</li>
 			</ol>
 			<div class="nc-roomba-actions">
 				<NcButton :disabled="!!busy" @click="scanSoftAp">
@@ -132,7 +145,7 @@
 			<ul class="nc-roomba-wizard__howto">
 				<li>Force-quit the iRobot app (single MQTT client).</li>
 				<li>Use Dashboard Clean / Dock / Spot from NC Roomba.</li>
-				<li>Advanced hold-HOME retrieval remains below if you need to rotate the local password.</li>
+				<li>To rotate the local password later, use Advanced → hold-HOME retrieval below.</li>
 			</ul>
 		</div>
 

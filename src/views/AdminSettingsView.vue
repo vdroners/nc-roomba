@@ -16,8 +16,16 @@
 			@discover="scan"
 			@test="test" />
 
-		<details class="nc-roomba-admin__advanced">
-			<summary>Advanced — manual credentials &amp; hold-HOME</summary>
+		<details class="nc-roomba-admin__advanced" open>
+			<summary>Recommended if already on Wi‑Fi — Auto discover &amp; hold-HOME</summary>
+
+			<NcNoteCard type="success">
+				If the robot is already on your home Wi‑Fi, this is the reliable, app-free way to
+				connect: <strong>Auto discover</strong>, then hold the robot's <strong>HOME</strong>
+				button until it beeps and click <strong>Retrieve credentials (hold HOME)</strong>. It
+				pulls the robot's local MQTT password (never your iRobot login), stores it encrypted,
+				and connects. Give the robot a DHCP reservation so its IP stays stable.
+			</NcNoteCard>
 
 			<div class="nc-roomba-admin__grid">
 				<label>
