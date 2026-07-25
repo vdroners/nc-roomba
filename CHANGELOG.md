@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Working **Auto discover** on Settings + Admin (UDP + :8883 LAN scan)
 - Discover finds Alfred even when UDP broadcast is silent
 
+### Changed
+
+- Settings: cleaning preferences are real controls (carpet boost, pass count,
+  edge clean, always finish) instead of a raw JSON dump, and the admin-only
+  retention panel can preview *and* apply a prune
+
 
 ## [0.1.0] - 2026-07-25
 
