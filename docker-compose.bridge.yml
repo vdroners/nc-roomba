@@ -16,7 +16,11 @@ services:
     ports:
       - "127.0.0.1:18791:8080"
     networks:
-      - nc-roomba-net
+      nc-roomba-net:
+        # Both spellings resolve so any saved bridge_url keeps working.
+        aliases:
+          - nc_roomba_bridge
+          - nc-roomba-bridge
 
 networks:
   nc-roomba-net:

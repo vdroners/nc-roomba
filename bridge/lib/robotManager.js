@@ -18,6 +18,8 @@ const net = require('node:net')
 const os = require('node:os')
 const { constants } = require('node:crypto')
 
+// Patch tls.connect for the robot's fw2 TLS stack BEFORE dorita980 loads.
+require('./tlsLegacy')
 const dorita980 = require('dorita980')
 const { normalizeState } = require('./stateNormalizer')
 
@@ -49,8 +51,6 @@ const MOCK_TRANSITIONS = {
 
 const CONFLICT_HINTS = [
 	'identifier rejected',
-	'not authorized',
-	'connection refused',
 	'econnreset',
 ]
 
@@ -177,6 +177,11 @@ class RobotManager extends EventEmitter {
 			this.lastError = err && err.message ? err.message : String(err)
 			return this.health()
 		}
+
+		// dorita980 v2 attaches its own `error` listener that rethrows, which
+		// turns a benign auth/reconnect error into an uncaught exception that
+		// crash-loops the bridge. Drop it and handle errors ourselves.
+		this.robot.removeAllListeners('error')
 
 		this.robot.on('connect', () => {
 			this.connected = true
@@ -799,11 +804,20 @@ class RobotManager extends EventEmitter {
 	 */
 	#recordError(err) {
 		const message = err && err.message ? err.message : String(err)
-		this.lastError = message
 		const lower = message.toLowerCase()
-		if (CONFLICT_HINTS.some((hint) => lower.includes(hint))) {
+		// MQTT CONNACK code 5 / "not authorized" == the BLID or local password
+		// is wrong. The local password is NOT the iRobot account password — it
+		// must be fetched from the robot in onboarding mode (hold HOME).
+		if (Number(err && err.code) === 5 || lower.includes('not authorized')) {
+			this.lastError = 'Not authorized — the BLID or local password is wrong. '
+				+ 'The local password is not your iRobot account password; use '
+				+ '"Retrieve credentials (hold HOME)" to fetch the correct one.'
+		} else if (CONFLICT_HINTS.some((hint) => lower.includes(hint))) {
 			this.conflict = 'Another client owns the robot\'s single MQTT session (the iRobot app is probably open). '
 				+ 'Close it, wait 30 seconds, then retry connect.'
+			this.lastError = message
+		} else {
+			this.lastError = message
 		}
 		this.connected = false
 		this.#publish()

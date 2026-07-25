@@ -16,7 +16,7 @@ class Application extends App implements IBootstrap
 {
 	public const APP_ID = 'nc_roomba';
 	public const OPERATOR_GROUP = 'roomba-operators';
-	public const DEFAULT_BRIDGE_URL = 'http://nc-roomba-bridge:8080';
+	public const DEFAULT_BRIDGE_URL = 'http://nc_roomba_bridge:8080';
 	public const DEFAULT_RETENTION_DAYS = 365;
 
 	public function __construct()

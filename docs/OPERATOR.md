@@ -8,7 +8,7 @@ only to Nextcloud.
 
 - Alfred on the same LAN as the GCS / Nextcloud host
 - Nextcloud admins configure the app; operators must be in the `roomba-operators` group
-- Bridge container attached to Docker network reachable from `cloud_app` as `http://nc-roomba-bridge:8080`
+- Bridge container attached to Docker network reachable from `cloud_app` as `http://nc_roomba_bridge:8080` (the container name uses underscores; a `nc-roomba-bridge` alias also resolves)
 
 ## 1. DHCP reservation
 

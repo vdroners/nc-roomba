@@ -1,6 +1,6 @@
 # NC Roomba
 
-**Version 0.1.1**
+**Version 0.1.2**
 
 Nextcloud app to control Alfred (Roomba 960) over the local LAN MQTT API.
 Remote access is via your Nextcloud DDNS URL; the private Node bridge never

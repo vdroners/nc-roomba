@@ -28,7 +28,7 @@
 			</label>
 			<label>
 				Bridge URL
-				<input v-model="cfg.bridge_url" type="text" placeholder="http://nc-roomba-bridge:8080">
+				<input v-model="cfg.bridge_url" type="text" placeholder="http://nc_roomba_bridge:8080">
 			</label>
 			<label>
 				Operator group

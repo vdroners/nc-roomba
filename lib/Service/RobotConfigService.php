@@ -25,7 +25,7 @@ class RobotConfigService
 			'blid' => $this->config->getAppValue(Application::APP_ID, 'robot_blid', ''),
 			'password_set' => $enc !== '',
 			'password_encrypted' => $this->crypto->isEncrypted($enc),
-			'bridge_url' => $this->config->getAppValue(Application::APP_ID, 'bridge_url', 'http://nc-roomba-bridge:8080'),
+			'bridge_url' => $this->config->getAppValue(Application::APP_ID, 'bridge_url', 'http://nc_roomba_bridge:8080'),
 			'retention_days' => (int)$this->config->getAppValue(Application::APP_ID, 'retention_days', '365'),
 			'has_pose' => $this->config->getAppValue(Application::APP_ID, 'has_pose', '0') === '1',
 			'operator_group' => Application::OPERATOR_GROUP,
