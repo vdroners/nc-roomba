@@ -3,6 +3,9 @@ services:
     build: ./bridge
     container_name: nc_roomba_bridge
     restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
     environment:
       PORT: "8080"
       ROOMBA_MOCK: "${ROOMBA_MOCK:-1}"
@@ -12,6 +15,11 @@ services:
       FIRMWARE_VERSION: "${FIRMWARE_VERSION:-2}"
       # Comma-separated /24 bases (or CIDR) to TCP-scan for :8883 when UDP misses.
       ROOMBA_DISCOVER_SUBNETS: "${ROOMBA_DISCOVER_SUBNETS:-10.0.0.0/24}"
+      # Host Soft-AP helper (systemd nc-roomba-wifi-helper on :8091).
+      ROOMBA_WIFI_HELPER_URL: "${ROOMBA_WIFI_HELPER_URL:-http://host.docker.internal:8091}"
+      ROOMBA_WIFI_HELPER_TOKEN: "${ROOMBA_WIFI_HELPER_TOKEN:-}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     # Host loopback only for gates/debug — not LAN-public.
     ports:
       - "127.0.0.1:18791:8080"

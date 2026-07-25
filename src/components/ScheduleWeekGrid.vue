@@ -2,7 +2,7 @@
 	<div class="nc-roomba-panel" data-testid="schedule-week">
 		<h3>Weekly schedule</h3>
 		<p class="nc-roomba-muted">
-			Times are <strong>robot-local</strong>. Alfred keeps its own clock, so a
+			Times are <strong>robot-local</strong>. The robot keeps its own clock, so a
 			15:00 start means 15:00 on the robot — not on this Nextcloud server.
 			<span v-if="offsetNote">{{ offsetNote }}</span>
 		</p>
@@ -30,7 +30,7 @@
 		<p v-if="next" data-field="next-scheduled">
 			<strong>Next start:</strong> {{ next.day }} {{ next.local_time }} (robot time)
 		</p>
-		<p v-else class="nc-roomba-muted">No days enabled — Alfred only cleans on demand.</p>
+		<p v-else class="nc-roomba-muted">No days enabled — the robot only cleans on demand.</p>
 
 		<div class="nc-roomba-actions">
 			<NcButton type="primary" :disabled="disabled || !dirty" @click="save">

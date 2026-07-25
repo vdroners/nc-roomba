@@ -112,6 +112,34 @@ class BridgeClient
 	}
 
 	/**
+	 * Soft-AP Wi-Fi scan via host wifi-helper (Roomba-* SSIDs).
+	 *
+	 * @param array<string, mixed> $opts
+	 * @return array{ok:bool,status:int,body:?array,raw:string,error:?string}
+	 */
+	public function softapScan(array $opts = []): array
+	{
+		return $this->request('POST', '/onboard/softap-scan', null, $opts, 60);
+	}
+
+	/**
+	 * Soft-AP provision (join robot AP → wlcfg → LAN discover). Long-running.
+	 *
+	 * @param array<string, mixed> $opts
+	 * @return array{ok:bool,status:int,body:?array,raw:string,error:?string}
+	 */
+	public function softapProvision(array $opts): array
+	{
+		return $this->request('POST', '/onboard/softap-provision', null, $opts, 240);
+	}
+
+	/** @return array{ok:bool,status:int,body:?array,raw:string,error:?string} */
+	public function softapStatus(): array
+	{
+		return $this->request('GET', '/onboard/softap-status', null, null, 10);
+	}
+
+	/**
 	 * @param array{blid:string,password:string,ip:string,name?:string} $creds
 	 * @return array{ok:bool,status:int,body:?array,raw:string,error:?string}
 	 */

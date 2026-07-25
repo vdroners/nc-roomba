@@ -1,23 +1,30 @@
 <template>
 	<div class="nc-roomba-view">
 		<header class="nc-roomba-view__header">
-			<h2>Location</h2>
-			<p class="nc-roomba-muted">
-				{{ hasPose ? 'Live pose reported by the robot.' : 'This robot does not publish pose locally.' }}
-			</p>
+			<div>
+				<h2>Location</h2>
+				<p class="nc-roomba-muted">
+					{{ hasPose
+						? `Live pose from ${robotName} (relative to the dock).`
+						: `${robotName} does not publish pose over the local API — showing the live mission theater instead.` }}
+				</p>
+			</div>
 		</header>
 
-		<!-- Capability-detected: only draw a map when the robot actually reports
-		     a pose. Otherwise say so instead of inventing a position. -->
 		<div v-if="hasPose" class="nc-roomba-panel" data-testid="location-map">
 			<div class="nc-roomba-map" :style="floorplanStyle">
 				<svg class="nc-roomba-map__svg" viewBox="-500 -500 1000 1000" role="img" aria-label="Robot position">
 					<line x1="-500" y1="0" x2="500" y2="0" class="nc-roomba-map__axis" />
 					<line x1="0" y1="-500" x2="0" y2="500" class="nc-roomba-map__axis" />
+					<!-- Dock origin -->
+					<circle class="nc-roomba-map__dock" cx="0" cy="0" r="34" />
+					<text class="nc-roomba-map__dock-label" x="0" y="8" text-anchor="middle">dock</text>
+					<polyline v-if="trailFade" :points="trailFade" class="nc-roomba-map__trail-fade" />
 					<polyline v-if="trailPoints" :points="trailPoints" class="nc-roomba-map__trail" />
-					<g :transform="markerTransform">
-						<circle r="26" class="nc-roomba-map__robot" />
-						<polygon points="0,-46 14,-16 -14,-16" class="nc-roomba-map__heading" />
+					<g class="nc-roomba-map__robot-g" :transform="markerTransform">
+						<polygon points="0,-78 40,14 -40,14" class="nc-roomba-map__cone" />
+						<circle r="28" class="nc-roomba-map__robot" />
+						<polygon points="0,-50 13,-18 -13,-18" class="nc-roomba-map__heading" />
 					</g>
 				</svg>
 			</div>
@@ -34,6 +41,10 @@
 					<dt>heading</dt>
 					<dd>{{ pose.theta }}°</dd>
 				</div>
+				<div class="nc-roomba-stats__item">
+					<dt>phase</dt>
+					<dd>{{ phaseText }}</dd>
+				</div>
 			</dl>
 			<p class="nc-roomba-muted">
 				Coordinates are centimetres from the dock, in the robot's own frame —
@@ -43,8 +54,12 @@
 
 		<div v-else class="nc-roomba-panel" data-testid="location-fallback">
 			<div class="nc-roomba-map-fallback">
-				<div>
-					<p><strong>Live map unavailable</strong></p>
+				<MissionStage
+					:state="store.state"
+					:has-pose="false"
+					:fallback-name="robotName" />
+				<div class="nc-roomba-map-fallback__body">
+					<p><strong>Live floor map unavailable</strong></p>
 					<p>{{ fallbackReason }}</p>
 					<p data-field="fallback-phase">Phase: {{ phaseText }}</p>
 					<p v-if="lastSeen" class="nc-roomba-muted">Last known state {{ lastSeen }}</p>
@@ -56,13 +71,14 @@
 			</p>
 			<p v-else class="nc-roomba-muted">
 				An administrator can upload a floorplan image in the app settings to
-				give this view a backdrop.
+				give this view a backdrop when pose becomes available.
 			</p>
 		</div>
 	</div>
 </template>
 
 <script>
+import MissionStage from '../components/MissionStage.vue'
 import { useRobotStore } from '../store/robot.js'
 import { lastSeenLabel, phaseLabel } from '../utils/format.js'
 
@@ -72,9 +88,17 @@ const EXTENT = 480
 export default {
 	name: 'LocationView',
 
+	components: { MissionStage },
+
 	computed: {
 		store() {
 			return useRobotStore()
+		},
+		robotName() {
+			const boot = this.store.bootstrap || {}
+			return (this.store.state && this.store.state.name)
+				|| (boot.robot && boot.robot.name)
+				|| 'Roomba'
 		},
 		hasPose() {
 			return this.store.hasPose && this.pose.x !== null && this.pose.x !== undefined
@@ -98,7 +122,7 @@ export default {
 			if (!this.store.hasSample) {
 				return 'No state sample yet — check the connection health drawer.'
 			}
-			return 'The Roomba 960 does not advertise the pose capability over the local API, so there is no position to draw. Phase and last-known status are shown instead.'
+			return 'Many 900-series models do not advertise pose over the local MQTT API. The mission stage above still tracks phase, battery, and coverage in real time.'
 		},
 		markerTransform() {
 			const x = clamp(Number(this.pose.x) || 0)
@@ -108,13 +132,10 @@ export default {
 			return `translate(${x} ${y}) rotate(${theta})`
 		},
 		trailPoints() {
-			const trail = (this.store.state && this.store.state.pose_trail) || []
-			if (!Array.isArray(trail) || trail.length < 2) {
-				return ''
-			}
-			return trail
-				.map((point) => `${clamp(Number(point.x) || 0)},${-clamp(Number(point.y) || 0)}`)
-				.join(' ')
+			return formatTrail((this.store.state && this.store.state.pose_trail) || [], false)
+		},
+		trailFade() {
+			return formatTrail((this.store.state && this.store.state.pose_trail) || [], true)
 		},
 	},
 }
@@ -125,5 +146,23 @@ export default {
  */
 function clamp(value) {
 	return Math.max(-EXTENT, Math.min(EXTENT, value))
+}
+
+/**
+ * @param {Array<{x:number,y:number}>} trail
+ * @param {boolean} fade
+ * @returns {string}
+ */
+function formatTrail(trail, fade) {
+	if (!Array.isArray(trail) || trail.length < 2) {
+		return ''
+	}
+	const points = fade ? trail.filter((_, i) => i % 2 === 0) : trail
+	if (points.length < 2) {
+		return ''
+	}
+	return points
+		.map((point) => `${clamp(Number(point.x) || 0)},${-clamp(Number(point.y) || 0)}`)
+		.join(' ')
 }
 </script>

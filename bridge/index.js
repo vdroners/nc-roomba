@@ -78,6 +78,21 @@ app.post('/onboard/get-password', wrap(async (req, res) => {
 	res.json({ ok: true, ...creds })
 }))
 
+app.get('/onboard/softap-status', (req, res) => {
+	res.json({ ok: true, status: manager.getSoftapStatus() })
+})
+
+app.post('/onboard/softap-scan', wrap(async (req, res) => {
+	const roombaOnly = (req.body || {}).roomba_only !== false
+	const result = await manager.scanSoftAp(roombaOnly)
+	res.json(result)
+}))
+
+app.post('/onboard/softap-provision', wrap(async (req, res) => {
+	const result = await manager.softapProvision(req.body || {})
+	res.json(result)
+}))
+
 app.post('/connect', wrap(async (req, res) => {
 	const health = manager.connect(req.body || {})
 	res.status(health.connected || health.mock ? 200 : 202).json({ ok: true, ...health })

@@ -29,7 +29,7 @@
 			@update:open="confirmOpen = $event"
 			@closing="confirmOpen = false">
 			<p>
-				Stopping ends the current cleaning cycle — Alfred stays where it is and
+				Stopping ends the current cleaning cycle — the robot stays where it is and
 				the mission is closed out. Use <strong>Pause</strong> if you want to
 				resume, or <strong>Dock</strong> to send it home.
 			</p>

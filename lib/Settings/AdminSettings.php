@@ -31,6 +31,7 @@ class AdminSettings implements ISettings
 			'operator_group' => $boot['operator_group'],
 			'retention_days' => $boot['retention_days'],
 			'robot' => $boot['robot'],
+			'home_wifi' => $boot['home_wifi'] ?? null,
 			'save_url' => $this->urlGenerator->linkToRoute('nc_roomba.settings.adminSave'),
 			'onboard_url' => $this->urlGenerator->linkToRoute('nc_roomba.settings.onboard'),
 			'discover_url' => $this->urlGenerator->linkToRoute('nc_roomba.robot.discover'),

@@ -1,5 +1,5 @@
 <template>
-	<div class="nc-roomba-app-shell">
+	<div :class="['nc-roomba-app-shell', { 'is-cleaning': isCleaning }]">
 		<StatusStrip
 			:state="state"
 			:age-s="ageS"
@@ -105,6 +105,17 @@ export default {
 
 	data() {
 		return { tabs: TABS }
+	},
+
+	computed: {
+		isCleaning() {
+			if (!this.state) {
+				return false
+			}
+			const phase = String(this.state.phase || '')
+			const cycle = String(this.state.cycle || '')
+			return phase === 'run' || cycle === 'clean' || cycle === 'spot'
+		},
 	},
 }
 </script>

@@ -5,7 +5,7 @@ fail=0
 
 check_file_contains() {
   local g="$1" file="$2" needle="$3"
-  if [[ -f "$ROOT/$file" ]] && grep -q "$needle" "$ROOT/$file"; then
+  if [[ -f "$ROOT/$file" ]] && grep -Fq -- "$needle" "$ROOT/$file"; then
     echo "PASS $g $file"
   else
     echo "FAIL $g missing $needle in $file"
@@ -19,9 +19,14 @@ check_file_contains G33 src/components/ErrorDecoderPanel.vue 'error-decoder'
 check_file_contains G34 src/components/MissionTimeline.vue 'mission-timeline'
 check_file_contains G35 src/components/ScheduleWeekGrid.vue 'schedule-week'
 check_file_contains G35b src/views/SettingsView.vue 'Auto discover'
+check_file_contains G35c src/components/MissionStage.vue 'data-testid="mission-stage"'
+check_file_contains G35d src/views/DashboardView.vue 'MissionStage'
+check_file_contains G35e css/style.scss 'nc-roomba-stage'
+check_file_contains G35f img/app.svg 'NC Roomba'
 check_file_contains G36 src/components/MaintenanceHints.vue 'maintenance-hints'
 check_file_contains G37 src/components/ConnectionHealthDrawer.vue 'Recovery checklist'
 check_file_contains G38 css/style.scss 'color-main-background'
+check_file_contains G39 css/style.scss '--nc-app-accent: #c4a574'
 
 # Catalog + thresholds for decoder/maintenance
 if jq -e '[.errors // {} | to_entries[] | select(.value.title|tostring|test("bin full";"i"))] | length > 0' "$ROOT/knowledge/error_codes.json" >/dev/null \

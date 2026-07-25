@@ -10,7 +10,7 @@
 import axios from '@nextcloud/axios'
 import { generateUrl } from '@nextcloud/router'
 
-/** Alfred-first: the schema is multi-robot but v0.1 ships a single robot id. */
+/** Schema is multi-robot; v0.x ships a single primary robot id. */
 export const DEFAULT_ROBOT_ID = 1
 
 const base = () => generateUrl('/apps/nc_roomba')
@@ -152,6 +152,38 @@ export async function saveAdminSettings(cfg) {
  */
 export async function onboard(payload) {
 	const { data } = await axios.post(`${base()}/api/admin/onboard`, payload)
+	return data
+}
+
+/**
+ * Scan for Roomba Soft-AP SSIDs via the host wifi-helper.
+ *
+ * @param {{ roomba_only?: boolean }} [payload]
+ * @returns {Promise<object>}
+ */
+export async function softapScan(payload = { roomba_only: true }) {
+	const { data } = await axios.post(`${base()}/api/admin/setup/softap-scan`, payload)
+	return data
+}
+
+/**
+ * Factory Soft-AP provision (home Wi-Fi + local MQTT credentials).
+ *
+ * @param {object} payload
+ * @returns {Promise<object>}
+ */
+export async function softapSetup(payload) {
+	const { data } = await axios.post(`${base()}/api/admin/setup/softap`, payload, {
+		timeout: 240000,
+	})
+	return data
+}
+
+/**
+ * @returns {Promise<object>} bridge Soft-AP job status
+ */
+export async function softapStatus() {
+	const { data } = await axios.get(`${base()}/api/admin/setup/status`)
 	return data
 }
 

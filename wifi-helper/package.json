@@ -1,0 +1,19 @@
+{
+  "name": "nc-roomba-wifi-helper",
+  "version": "0.3.1",
+  "private": true,
+  "description": "Host Wi-Fi Soft-AP helper for NC Roomba factory provisioning",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "mqtt": "^5.10.0"
+  },
+  "license": "AGPL-3.0-or-later"
+}

@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-07-25
+
+### Fixed
+
+- Wi-Fi scanning returned zero networks after any Soft-AP session: `leaveSoftAp`
+  handed the radio back to NetworkManager while the link was down, and every later
+  `nmcli device wifi list` came back empty. The helper now restores managed + up on
+  leave, and `ensureRadioUp()` runs before every scan and join with a 3-pass retry.
+- `joinSoftAp` only computed a centre frequency for channel 1, so a Soft-AP on any
+  other channel was passed to `iw` with no frequency hint. Added `channelToFreq`.
+- Soft-AP discovery only matched `Roomba-<BLID>`; Braava and some newer units
+  advertise `iRobot-<BLID>`. Both prefixes are now accepted for scan and BLID parse.
+- `authExchangePacket` wrote the MQTT remaining-length as a single byte, which
+  corrupts the packet above 127 bytes. Now uses proper varint encoding.
+- Post-provision LAN discovery fell back to `candidates[0]` when no BLID matched,
+  which could target a different robot. It now requires a BLID match or a lone
+  candidate, and polls 4 times (robots take 15-60 s to join home Wi-Fi).
+
+### Added
+
+- `occ nc_roomba:home-wifi` to show or seed the home Wi-Fi SSID / passphrase /
+  timezone / country headlessly; the passphrase is encrypted at rest as the admin
+  UI would store it.
+- `home_wifi_password` listed in `AdminSecretCrypto::SECRET_KEYS`.
+
+## [0.3.0] - 2026-07-25
+
+### Added
+
+- **Factory Soft-AP setup wizard** in Administration → NC Roomba (name, home Wi‑Fi,
+  Soft-AP scan, provision, LAN connect)
+- Host service `nc-roomba-wifi-helper` (`wifi-helper/`) for Soft-AP join + kumy
+  MQTT `wlcfg` provisioning without the iRobot app
+- Bridge APIs `/onboard/softap-scan`, `/onboard/softap-provision`, `/onboard/softap-status`
+- PHP admin routes `/api/admin/setup/softap*`; encrypted `home_wifi_password` appconfig
+- Dogfood script `scripts/softap-dogfood.js` and plan
+  `.cursor/plans/nc-roomba-softap-wizard-v0.3.md`
+
+### Fixed
+
+- Admin UI now recognizes `has_password` (was looking only for `password_set`)
+
+### Changed
+
+- Operator guide leads with Soft-AP factory path; hold-HOME is advanced fallback
+
+## [0.2.0] - 2026-07-25
+
+### Added
+
+- Butler visual system (charcoal / brass / cream) and unique Roomba app icon
+- **Mission stage** on the Dashboard — live phase animation, coverage / duration /
+  battery / cycle metrics, optional pose mini-map
+- Advanced Location map (dock origin, fading trail, heading cone) when pose exists;
+  mission-theater fallback when it does not (e.g. Roomba 960)
+- Production docs: `docs/ARCHITECTURE.md`, `CONTRIBUTING.md`, GitHub issue templates
+- Checked-in plan `.cursor/plans/nc-roomba-butler-ui-v0.2.md`
+
+### Changed
+
+- Operator-facing copy uses the live robot display name (not hardcoded Alfred)
+- App summary/description are multi-robot; Alfred remains the worked example in docs
+- Dashboard is a Controls + MissionStage split; shell gains a cleaning atmosphere
+
 ## [0.1.2] - 2026-07-25
 
 ### Fixed

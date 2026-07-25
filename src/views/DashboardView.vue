@@ -1,14 +1,26 @@
 <template>
-	<div class="nc-roomba-view">
+	<div class="nc-roomba-view nc-roomba-dashboard">
 		<header class="nc-roomba-view__header">
-			<h2>{{ name }}</h2>
-			<p class="nc-roomba-muted">{{ headline }}</p>
+			<div>
+				<h2>{{ name }}</h2>
+				<p class="nc-roomba-muted">{{ headline }}</p>
+			</div>
 		</header>
 
-		<ControlPad
-			:disabled="!store.canOperate"
-			:pending="store.actionPending"
-			@action="onAction" />
+		<div class="nc-roomba-dashboard__split">
+			<section class="nc-roomba-panel" style="margin: 0">
+				<h3>Controls</h3>
+				<ControlPad
+					:disabled="!store.canOperate"
+					:pending="store.actionPending"
+					@action="onAction" />
+			</section>
+
+			<MissionStage
+				:state="store.state"
+				:has-pose="store.hasPose"
+				:fallback-name="fallbackName" />
+		</div>
 
 		<ErrorDecoderPanel
 			:decoded="store.decodedError"
@@ -25,6 +37,7 @@
 import ControlPad from '../components/ControlPad.vue'
 import ErrorDecoderPanel from '../components/ErrorDecoderPanel.vue'
 import MaintenanceHints from '../components/MaintenanceHints.vue'
+import MissionStage from '../components/MissionStage.vue'
 import MissionTimeline from '../components/MissionTimeline.vue'
 import { useRobotStore } from '../store/robot.js'
 import { durationLabel, phaseLabel } from '../utils/format.js'
@@ -32,14 +45,24 @@ import { durationLabel, phaseLabel } from '../utils/format.js'
 export default {
 	name: 'DashboardView',
 
-	components: { ControlPad, ErrorDecoderPanel, MaintenanceHints, MissionTimeline },
+	components: {
+		ControlPad,
+		ErrorDecoderPanel,
+		MaintenanceHints,
+		MissionStage,
+		MissionTimeline,
+	},
 
 	computed: {
 		store() {
 			return useRobotStore()
 		},
+		fallbackName() {
+			const boot = this.store.bootstrap || {}
+			return (boot.robot && boot.robot.name) || 'Roomba'
+		},
 		name() {
-			return (this.store.state && this.store.state.name) || 'Alfred'
+			return (this.store.state && this.store.state.name) || this.fallbackName
 		},
 		headline() {
 			const state = this.store.state

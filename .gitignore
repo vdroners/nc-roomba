@@ -13,6 +13,7 @@ css/style.css.map
 .env.*
 !.env.example
 bridge/node_modules/
+wifi-helper/node_modules/
 .DS_Store
 *.swp
 .idea/

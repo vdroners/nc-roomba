@@ -1,8 +1,8 @@
 {
   "name": "nc_roomba",
-  "version": "0.1.2",
+  "version": "0.3.1",
   "private": true,
-  "description": "NC Roomba — Nextcloud control for Alfred (Roomba 960)",
+  "description": "NC Roomba — Nextcloud control for Roomba over local MQTT",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "build": "sass css/style.scss css/style.css --no-source-map && webpack --mode production",

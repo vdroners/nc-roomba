@@ -1,6 +1,13 @@
 <template>
 	<div class="nc-roomba-status-strip" data-testid="status-strip">
 		<span class="nc-roomba-chip nc-roomba-chip--name">{{ name }}</span>
+		<span
+			v-if="isMock"
+			class="nc-roomba-chip warn"
+			data-field="mock"
+			title="Bridge is in ROOMBA_MOCK=1 — buttons do not touch the real robot">
+			MOCK
+		</span>
 		<span :class="['nc-roomba-chip', batteryClass(battery)]" data-field="battery" :title="batteryTitle">
 			{{ batteryLabel(battery) }}
 		</span>
@@ -65,7 +72,7 @@ export default {
 
 	computed: {
 		name() {
-			return (this.state && this.state.name) || 'Alfred'
+			return (this.state && this.state.name) || 'Roomba'
 		},
 		battery() {
 			return this.state ? this.state.battery_pct : null
@@ -84,13 +91,22 @@ export default {
 				? `${this.state.mission.sqft} sq ft this mission`
 				: 'Battery'
 		},
+		isMock() {
+			return Boolean(this.state && this.state.mock)
+		},
 		connectionLabel() {
+			if (this.isMock) {
+				return 'Mock (not real)'
+			}
 			if (this.conflict) {
 				return 'MQTT conflict'
 			}
 			return this.connected ? 'MQTT up' : 'MQTT down'
 		},
 		connectionClass() {
+			if (this.isMock) {
+				return 'warn'
+			}
 			if (this.conflict) {
 				return 'warn'
 			}

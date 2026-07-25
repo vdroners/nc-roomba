@@ -1,23 +1,27 @@
 /*
- * NC Roomba app styles.
+ * NC Roomba — butler visual system.
  *
- * UI-8: no in-app theme switch. Every colour comes from Nextcloud's own
- * `--color-*` variables, so light/dark (and custom themes) are inherited from
- * the host UI. The only brand token is `--nc-app-accent` (teal/green for the
- * vacuum app), matching the shared NC-GCS token contract.
+ * Product chrome inherits Nextcloud light/dark for readability, but the app
+ * owns a charcoal / brass / cream accent language so it never reads as a
+ * generic admin panel or a copy of another NC app.
  *
- * Layout target: equally usable on a desktop and a 390px-wide phone — the
- * control pad in particular has to stay tappable at that width.
+ * Layout target: desktop + 390px phones (control pad stays tappable).
  */
 
-// `nc-roomba-theme.css` (the shared NC-GCS token file) is loaded separately by
-// `Application::boot()` / `AdminSettings::getForm()`, so it is deliberately not
-// @imported here — that would ship the tokens twice.
-
 :root {
-	--nc-app-accent: #2bbbad;
-	--nc-app-accent-soft: rgba(43, 187, 173, 0.15);
+	--nc-app-accent: #c4a574;
+	--nc-app-accent-soft: rgba(196, 165, 116, 0.18);
+	--nc-roomba-brass: #c4a574;
+	--nc-roomba-brass-bright: #e0c896;
+	--nc-roomba-charcoal: #1a1a1c;
+	--nc-roomba-charcoal-soft: #2a2a2e;
+	--nc-roomba-cream: #f2e8d5;
+	--nc-roomba-cream-muted: rgba(242, 232, 213, 0.72);
 	--nc-roomba-radius: var(--border-radius-large, 12px);
+	--nc-roomba-stage-run: rgba(196, 165, 116, 0.22);
+	--nc-roomba-stage-pause: rgba(255, 152, 0, 0.2);
+	--nc-roomba-stage-dock: rgba(100, 149, 237, 0.2);
+	--nc-roomba-stage-fault: rgba(244, 67, 54, 0.22);
 }
 
 #nc-roomba-root,
@@ -26,23 +30,34 @@
 }
 
 .nc-roomba-app-shell {
-	background: var(--color-main-background);
+	background:
+		radial-gradient(1200px 420px at 12% -10%, rgba(196, 165, 116, 0.08), transparent 55%),
+		var(--color-main-background);
 	color: var(--color-main-text);
 	display: flex;
 	flex-direction: column;
 	min-height: 100%;
+	transition: background 0.6s ease;
+
+	&.is-cleaning {
+		background:
+			radial-gradient(900px 480px at 70% 0%, var(--nc-roomba-stage-run), transparent 60%),
+			radial-gradient(700px 360px at 10% 100%, rgba(196, 165, 116, 0.1), transparent 50%),
+			var(--color-main-background);
+	}
 }
 
-/* ─── UI-1 status strip (sticky) ─────────────────────────────────────── */
+/* ─── Status strip ───────────────────────────────────────────────────── */
 
 .nc-roomba-status-strip {
 	align-items: center;
-	background: var(--color-main-background);
-	border-bottom: 1px solid var(--color-border);
+	backdrop-filter: blur(8px);
+	background: color-mix(in srgb, var(--color-main-background) 88%, var(--nc-roomba-charcoal) 12%);
+	border-bottom: 1px solid color-mix(in srgb, var(--nc-roomba-brass) 35%, var(--color-border));
 	display: flex;
 	flex-wrap: wrap;
-	gap: 0.4rem 0.75rem;
-	padding: 0.6rem 1rem;
+	gap: 0.4rem 0.65rem;
+	padding: 0.65rem 1rem;
 	position: sticky;
 	top: 0;
 	z-index: 20;
@@ -51,19 +66,24 @@
 .nc-roomba-chip {
 	align-items: center;
 	background: var(--color-background-dark);
-	border-radius: var(--border-radius-pill, 999px);
+	border: 1px solid transparent;
+	border-radius: 10px;
 	display: inline-flex;
 	font-size: 0.85rem;
 	gap: 0.35rem;
-	padding: 0.2rem 0.6rem;
+	padding: 0.22rem 0.65rem;
 	white-space: nowrap;
 
 	&--name {
-		font-weight: 600;
+		background: var(--nc-roomba-charcoal);
+		border-color: color-mix(in srgb, var(--nc-roomba-brass) 45%, transparent);
+		color: var(--nc-roomba-cream);
+		font-weight: 650;
+		letter-spacing: 0.01em;
 	}
 
 	&--button {
-		border: none;
+		border: 1px solid var(--color-border);
 		color: inherit;
 		cursor: pointer;
 		font: inherit;
@@ -71,16 +91,17 @@
 
 	&.ok {
 		background: var(--nc-app-accent-soft);
-		color: var(--nc-app-accent);
+		border-color: color-mix(in srgb, var(--nc-roomba-brass) 40%, transparent);
+		color: color-mix(in srgb, var(--nc-roomba-brass) 70%, var(--color-main-text));
 	}
 
 	&.warn {
-		background: rgba(255, 152, 0, 0.2);
+		background: rgba(255, 152, 0, 0.18);
 		color: var(--color-warning-text, var(--color-main-text));
 	}
 
 	&.danger {
-		background: rgba(244, 67, 54, 0.2);
+		background: rgba(244, 67, 54, 0.18);
 		color: var(--color-error-text, var(--color-main-text));
 	}
 }
@@ -97,11 +118,12 @@
 	button {
 		background: transparent;
 		border: 1px solid var(--color-border);
-		border-radius: var(--border-radius-element, 8px);
+		border-radius: 10px;
 		color: var(--color-main-text);
 		cursor: pointer;
 		min-height: 40px;
 		padding: 0.35rem 0.9rem;
+		transition: border-color 0.2s ease, background 0.2s ease;
 
 		&.active {
 			background: var(--nc-app-accent-soft);
@@ -140,11 +162,12 @@
 }
 
 .nc-roomba-panel {
-	background: var(--color-main-background);
-	border: 1px solid var(--color-border);
+	background: color-mix(in srgb, var(--color-main-background) 92%, var(--nc-roomba-charcoal) 8%);
+	border: 1px solid color-mix(in srgb, var(--nc-roomba-brass) 22%, var(--color-border));
 	border-radius: var(--nc-roomba-radius);
 	margin: 0.75rem 0;
 	padding: 0.9rem 1rem;
+	box-shadow: 0 1px 0 rgba(196, 165, 116, 0.08);
 
 	h3 {
 		font-size: 1rem;
@@ -160,16 +183,252 @@
 	margin: 0.75rem 0 0.25rem;
 }
 
-/* ─── UI-2 control pad ───────────────────────────────────────────────── */
+/* ─── Dashboard split ────────────────────────────────────────────────── */
+
+.nc-roomba-dashboard {
+	display: grid;
+	gap: 0.75rem;
+}
+
+.nc-roomba-dashboard__split {
+	display: grid;
+	gap: 0.85rem;
+	grid-template-columns: minmax(0, 1fr);
+
+	@media (min-width: 840px) {
+		align-items: start;
+		grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+	}
+}
+
+/* ─── Mission stage (live theater) ───────────────────────────────────── */
+
+.nc-roomba-stage {
+	--stage-ring: var(--nc-roomba-brass);
+	--stage-glow: var(--nc-roomba-stage-run);
+	background:
+		radial-gradient(ellipse 80% 70% at 50% 45%, var(--stage-glow), transparent 70%),
+		linear-gradient(165deg, var(--nc-roomba-charcoal) 0%, var(--nc-roomba-charcoal-soft) 100%);
+	border: 1px solid color-mix(in srgb, var(--nc-roomba-brass) 40%, transparent);
+	border-radius: calc(var(--nc-roomba-radius) + 2px);
+	color: var(--nc-roomba-cream);
+	margin: 0;
+	overflow: hidden;
+	padding: 1rem 1.1rem 1.15rem;
+	position: relative;
+
+	&--idle {
+		--stage-glow: rgba(196, 165, 116, 0.1);
+	}
+
+	&--run {
+		--stage-ring: var(--nc-roomba-brass-bright);
+		--stage-glow: var(--nc-roomba-stage-run);
+	}
+
+	&--pause {
+		--stage-ring: #ffb74d;
+		--stage-glow: var(--nc-roomba-stage-pause);
+	}
+
+	&--dock {
+		--stage-ring: #90caf9;
+		--stage-glow: var(--nc-roomba-stage-dock);
+	}
+
+	&--fault {
+		--stage-ring: #ef9a9a;
+		--stage-glow: var(--nc-roomba-stage-fault);
+	}
+
+	&__header {
+		align-items: baseline;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem 0.75rem;
+		justify-content: space-between;
+		margin-bottom: 0.65rem;
+	}
+
+	&__title {
+		font-size: 1.05rem;
+		font-weight: 650;
+		letter-spacing: 0.02em;
+		margin: 0;
+	}
+
+	&__phase {
+		color: var(--nc-roomba-cream-muted);
+		font-size: 0.85rem;
+		margin: 0;
+	}
+
+	&__canvas {
+		align-items: center;
+		display: grid;
+		gap: 0.85rem;
+		grid-template-columns: minmax(140px, 200px) minmax(0, 1fr);
+		min-height: 180px;
+
+		@media (max-width: 560px) {
+			grid-template-columns: 1fr;
+			justify-items: center;
+		}
+	}
+
+	&__glyph-wrap {
+		aspect-ratio: 1;
+		margin: 0 auto;
+		max-width: 200px;
+		position: relative;
+		width: 100%;
+	}
+
+	&__svg {
+		display: block;
+		height: 100%;
+		width: 100%;
+	}
+
+	&__ring {
+		fill: none;
+		stroke: var(--stage-ring);
+		stroke-linecap: round;
+		stroke-width: 3.2;
+		transform-origin: 50% 50%;
+	}
+
+	&__ring--sweep {
+		stroke-dasharray: 40 180;
+		stroke-opacity: 0.95;
+	}
+
+	&--run &__ring--sweep {
+		animation: nc-roomba-sweep 2.4s linear infinite;
+	}
+
+	&--pause &__ring--sweep {
+		animation: nc-roomba-sweep 6s linear infinite;
+		stroke-opacity: 0.55;
+	}
+
+	&--dock &__ring--sweep {
+		animation: nc-roomba-sweep 3.2s ease-in-out infinite;
+	}
+
+	&__body {
+		fill: #f2e8d5;
+	}
+
+	&__home {
+		fill: #1a1a1c;
+	}
+
+	&__bumper {
+		fill: none;
+		stroke: var(--stage-ring);
+		stroke-linecap: round;
+		stroke-width: 2.5;
+	}
+
+	&__pulse {
+		fill: none;
+		stroke: var(--stage-ring);
+		stroke-opacity: 0.35;
+		stroke-width: 1.5;
+		transform-origin: 50% 50%;
+	}
+
+	&--run &__pulse {
+		animation: nc-roomba-pulse 2s ease-out infinite;
+	}
+
+	&__metrics {
+		display: grid;
+		gap: 0.55rem;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		width: 100%;
+	}
+
+	&__metric {
+		background: rgba(0, 0, 0, 0.28);
+		border: 1px solid rgba(196, 165, 116, 0.22);
+		border-radius: 10px;
+		padding: 0.55rem 0.65rem;
+
+		dt {
+			color: var(--nc-roomba-cream-muted);
+			font-size: 0.72rem;
+			letter-spacing: 0.04em;
+			text-transform: uppercase;
+		}
+
+		dd {
+			font-size: 1.25rem;
+			font-variant-numeric: tabular-nums;
+			font-weight: 650;
+			margin: 0.15rem 0 0;
+		}
+	}
+
+	&__mini-map {
+		border: 1px solid rgba(196, 165, 116, 0.28);
+		border-radius: 10px;
+		grid-column: 1 / -1;
+		margin-top: 0.15rem;
+		overflow: hidden;
+	}
+
+	&__hint {
+		color: var(--nc-roomba-cream-muted);
+		font-size: 0.8rem;
+		margin: 0.7rem 0 0;
+	}
+}
+
+@keyframes nc-roomba-sweep {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes nc-roomba-pulse {
+	0% {
+		opacity: 0.55;
+		transform: scale(0.92);
+	}
+	100% {
+		opacity: 0;
+		transform: scale(1.18);
+	}
+}
+
+@keyframes nc-roomba-trail-draw {
+	from {
+		stroke-dashoffset: 400;
+	}
+	to {
+		stroke-dashoffset: 0;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.nc-roomba-stage__ring--sweep,
+	.nc-roomba-stage__pulse,
+	.nc-roomba-map__robot-g,
+	.nc-roomba-map__trail {
+		animation: none !important;
+	}
+}
+
+/* ─── Control pad ────────────────────────────────────────────────────── */
 
 .nc-roomba-control-pad {
 	display: grid;
 	gap: 0.6rem;
 	grid-template-columns: repeat(4, minmax(0, 1fr));
-	margin: 1rem 0;
+	margin: 0;
 
-	// 44px is the minimum comfortable touch target; NcButton is 44px tall by
-	// default, this just stops a narrow column from squeezing the label out.
 	:deep(button),
 	button {
 		min-height: 44px;
@@ -177,7 +436,7 @@
 	}
 }
 
-/* ─── UI-4 mission timeline ──────────────────────────────────────────── */
+/* ─── Mission timeline ───────────────────────────────────────────────── */
 
 .nc-roomba-timeline {
 	border-radius: var(--border-radius-element, 8px);
@@ -201,7 +460,7 @@
 
 	&.is-active {
 		background: var(--nc-app-accent-soft);
-		color: var(--nc-app-accent);
+		color: color-mix(in srgb, var(--nc-roomba-brass) 55%, var(--color-main-text));
 	}
 
 	&.is-paused {
@@ -229,7 +488,7 @@
 	color: var(--color-text-maxcontrast);
 }
 
-/* ─── UI-5 schedule week grid ────────────────────────────────────────── */
+/* ─── Schedule week grid ─────────────────────────────────────────────── */
 
 .nc-roomba-week-grid {
 	display: grid;
@@ -256,7 +515,7 @@
 	width: 100%;
 }
 
-/* ─── UI-6 maintenance hints ─────────────────────────────────────────── */
+/* ─── Maintenance hints ──────────────────────────────────────────────── */
 
 .nc-roomba-hints {
 	display: flex;
@@ -355,14 +614,18 @@
 	font-size: 0.8rem;
 }
 
-/* ─── Location map / fallback ────────────────────────────────────────── */
+/* ─── Location map ───────────────────────────────────────────────────── */
 
 .nc-roomba-map {
+	background:
+		radial-gradient(circle at 50% 50%, rgba(196, 165, 116, 0.08), transparent 55%),
+		color-mix(in srgb, var(--color-background-dark) 70%, var(--nc-roomba-charcoal) 30%);
 	background-position: center;
 	background-size: cover;
-	border: 1px solid var(--color-border);
+	border: 1px solid color-mix(in srgb, var(--nc-roomba-brass) 30%, var(--color-border));
 	border-radius: var(--nc-roomba-radius);
 	overflow: hidden;
+	position: relative;
 }
 
 .nc-roomba-map__svg {
@@ -372,42 +635,84 @@
 }
 
 .nc-roomba-map__axis {
-	stroke: var(--color-border);
+	stroke: rgba(242, 232, 213, 0.18);
+	stroke-dasharray: 8 10;
 	stroke-width: 2;
+}
+
+.nc-roomba-map__dock {
+	fill: none;
+	stroke: var(--nc-roomba-brass);
+	stroke-opacity: 0.75;
+	stroke-width: 3;
+}
+
+.nc-roomba-map__dock-label {
+	fill: var(--nc-roomba-cream-muted);
+	font-size: 28px;
 }
 
 .nc-roomba-map__trail {
 	fill: none;
-	stroke: var(--nc-app-accent);
-	stroke-opacity: 0.5;
-	stroke-width: 6;
+	stroke: var(--nc-roomba-brass);
+	stroke-linecap: round;
+	stroke-linejoin: round;
+	stroke-opacity: 0.65;
+	stroke-width: 7;
+	animation: nc-roomba-trail-draw 1.2s ease-out 1;
+}
+
+.nc-roomba-map__trail-fade {
+	fill: none;
+	stroke: var(--nc-roomba-brass-bright);
+	stroke-linecap: round;
+	stroke-opacity: 0.25;
+	stroke-width: 14;
 }
 
 .nc-roomba-map__robot {
-	fill: var(--nc-app-accent);
+	fill: var(--nc-roomba-cream);
+	stroke: var(--nc-roomba-brass);
+	stroke-width: 3;
+	filter: drop-shadow(0 0 8px rgba(196, 165, 116, 0.45));
 }
 
 .nc-roomba-map__heading {
-	fill: var(--color-main-text);
+	fill: var(--nc-roomba-charcoal);
+}
+
+.nc-roomba-map__cone {
+	fill: rgba(196, 165, 116, 0.28);
+}
+
+.nc-roomba-map__robot-g {
+	transition: transform 0.45s cubic-bezier(0.22, 0.8, 0.3, 1);
 }
 
 .nc-roomba-map-fallback {
-	align-items: center;
-	border: 1px dashed var(--color-border);
+	align-items: stretch;
+	border: 1px solid color-mix(in srgb, var(--nc-roomba-brass) 28%, var(--color-border));
 	border-radius: var(--nc-roomba-radius);
 	color: var(--color-text-maxcontrast);
 	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
 	justify-content: center;
-	min-height: 220px;
-	padding: 1rem;
+	min-height: 260px;
+	overflow: hidden;
+	padding: 0;
+}
+
+.nc-roomba-map-fallback__body {
+	padding: 0 1rem 1rem;
 	text-align: center;
 }
 
-/* ─── UI-7 connection health drawer ──────────────────────────────────── */
+/* ─── Connection health drawer ───────────────────────────────────────── */
 
 .nc-roomba-drawer {
 	background: var(--color-main-background);
-	border-left: 1px solid var(--color-border);
+	border-left: 1px solid color-mix(in srgb, var(--nc-roomba-brass) 30%, var(--color-border));
 	box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
 	height: 100%;
 	overflow: auto;
@@ -477,7 +782,109 @@
 	}
 }
 
-/* ─── Narrow phones (control pad must stay usable at 390px) ──────────── */
+.nc-roomba-candidates {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35rem;
+	list-style: none;
+	margin: 0.5rem 0;
+	padding: 0;
+
+	button {
+		background: transparent;
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		color: inherit;
+		cursor: pointer;
+		padding: 0.45rem 0.65rem;
+		text-align: left;
+		width: 100%;
+
+		&.active,
+		&:hover {
+			border-color: var(--nc-app-accent);
+			background: var(--nc-app-accent-soft);
+		}
+	}
+}
+
+/* ─── Admin Soft-AP setup wizard ─────────────────────────────────────── */
+
+.nc-roomba-wizard {
+	margin: 1rem 0 1.5rem;
+	padding: 1rem 1.1rem 1.15rem;
+	border: 1px solid var(--nc-app-border, rgba(196, 165, 116, 0.35));
+	border-radius: 10px;
+	background: linear-gradient(
+		165deg,
+		rgba(26, 26, 28, 0.04),
+		rgba(196, 165, 116, 0.08)
+	);
+}
+
+.nc-roomba-wizard__header h4 {
+	margin: 0 0 0.35rem;
+	font-size: 1.05rem;
+}
+
+.nc-roomba-wizard__steps {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35rem 0.75rem;
+	list-style: none;
+	margin: 0.75rem 0 0;
+	padding: 0;
+	font-size: 0.8rem;
+	color: var(--color-text-maxcontrast, #666);
+}
+
+.nc-roomba-wizard__steps li.is-active {
+	color: var(--nc-app-accent, #C4A574);
+	font-weight: 600;
+}
+
+.nc-roomba-wizard__steps li.is-done {
+	color: var(--color-text-light, #333);
+}
+
+.nc-roomba-wizard__pane {
+	margin-top: 1rem;
+	display: grid;
+	gap: 0.65rem;
+}
+
+.nc-roomba-wizard__pane label {
+	display: grid;
+	gap: 0.25rem;
+	font-size: 0.9rem;
+}
+
+.nc-roomba-wizard__howto {
+	margin: 0;
+	padding-left: 1.2rem;
+	display: grid;
+	gap: 0.4rem;
+	font-size: 0.9rem;
+}
+
+.nc-roomba-wizard__nav {
+	margin-top: 1rem;
+}
+
+.nc-roomba-admin__advanced {
+	margin: 1.25rem 0;
+	padding: 0.75rem 0.9rem;
+	border: 1px dashed var(--nc-app-border, rgba(196, 165, 116, 0.4));
+	border-radius: 8px;
+}
+
+.nc-roomba-admin__advanced > summary {
+	cursor: pointer;
+	font-weight: 600;
+	margin-bottom: 0.75rem;
+}
+
+/* ─── Narrow phones ──────────────────────────────────────────────────── */
 
 @media (max-width: 480px) {
 	.nc-roomba-main {
@@ -504,5 +911,9 @@
 
 	.nc-roomba-timeline__band {
 		flex-basis: 33%;
+	}
+
+	.nc-roomba-stage__metrics {
+		grid-template-columns: 1fr 1fr;
 	}
 }

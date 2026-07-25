@@ -13,7 +13,7 @@
 
 		<div class="nc-roomba-panel" data-testid="preferences">
 			<h3>Cleaning preferences</h3>
-			<p v-if="!store.preferences" class="nc-roomba-muted">Reading preferences from Alfred…</p>
+			<p v-if="!store.preferences" class="nc-roomba-muted">Reading preferences from {{ robotName }}…</p>
 
 			<template v-else>
 				<fieldset class="nc-roomba-fieldset">
@@ -109,7 +109,7 @@
 					the local API is reached by IP.
 				</p>
 				<template v-if="store.canAdmin">
-					<p>Hold <strong>HOME</strong> until Alfred plays two tones, then:</p>
+					<p>Hold <strong>HOME</strong> until {{ robotName }} plays two tones, then:</p>
 					<div class="nc-roomba-actions">
 						<NcButton :disabled="onboarding" @click="runOnboard">
 							{{ onboarding ? 'Retrieving…' : 'Retrieve credentials (hold HOME)' }}
@@ -217,6 +217,12 @@ export default {
 		store() {
 			return useRobotStore()
 		},
+		robotName() {
+			const boot = this.store.bootstrap || {}
+			return (this.store.state && this.store.state.name)
+				|| (boot.robot && boot.robot.name)
+				|| 'Roomba'
+		},
 		locked() {
 			return !this.store.canOperate || this.savingPrefs
 		},
@@ -255,14 +261,14 @@ export default {
 		 */
 		async saveSchedule(week) {
 			await this.store.saveSchedule(week)
-			this.report(this.store.error || 'Schedule written to Alfred.', this.store.error ? 'error' : 'success')
+			this.report(this.store.error || `Schedule written to ${this.robotName}.`, this.store.error ? 'error' : 'success')
 		},
 
 		async savePrefs() {
 			this.savingPrefs = true
 			try {
 				await this.store.savePreferences({ ...this.prefs })
-				this.report(this.store.error || 'Preferences written to Alfred.', this.store.error ? 'error' : 'success')
+				this.report(this.store.error || `Preferences written to ${this.robotName}.`, this.store.error ? 'error' : 'success')
 			} finally {
 				this.savingPrefs = false
 			}
@@ -285,11 +291,14 @@ export default {
 				if (this.candidates.length === 0) {
 					this.discoverMsg = data.error
 						? `Discovery failed: ${data.error}`
-						: 'No robot answered. Confirm Alfred is on Wi-Fi and on this VLAN, then retry.'
+						: 'No robot answered. Confirm the robot is on Wi-Fi and on this VLAN, then retry.'
 					return
 				}
-				const alfred = this.candidates.find((c) => String(c.robotname || '').toLowerCase() === 'alfred')
-				this.selected = alfred || this.candidates[0]
+				const wanted = String(this.robotName || '').toLowerCase()
+				const named = wanted
+					? this.candidates.find((c) => String(c.robotname || '').toLowerCase() === wanted)
+					: null
+				this.selected = named || this.candidates[0]
 				this.discoverMsg = `Found ${this.candidates.length} robot(s).`
 			} catch (err) {
 				this.discoverMsg = (err.response && err.response.data && err.response.data.error) || err.message || 'Discovery failed'
@@ -311,12 +320,12 @@ export default {
 				return
 			}
 			this.onboarding = true
-			this.onboardMsg = 'Hold HOME until Alfred beeps — retrieving the local password…'
+			this.onboardMsg = `Hold HOME until ${this.selected.robotname || this.robotName} beeps — retrieving the local password…`
 			try {
 				const data = await api.onboard({
 					ip: this.selected.ip,
 					host: this.selected.ip,
-					name: this.selected.robotname || 'Alfred',
+					name: this.selected.robotname || this.robotName,
 					blid: this.selected.blid,
 				})
 				if (data.error) {
@@ -324,7 +333,7 @@ export default {
 					return
 				}
 				const robot = data.robot || {}
-				this.onboardMsg = `Onboarded ${robot.name || 'Alfred'} at ${robot.host || this.selected.ip}.`
+				this.onboardMsg = `Onboarded ${robot.name || this.selected.robotname || this.robotName} at ${robot.host || this.selected.ip}.`
 				await this.store.refresh()
 			} catch (err) {
 				this.onboardMsg = (err.response && err.response.data && err.response.data.error) || err.message || 'Onboarding failed'

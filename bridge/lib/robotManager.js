@@ -22,6 +22,7 @@ const { constants } = require('node:crypto')
 require('./tlsLegacy')
 const dorita980 = require('dorita980')
 const { normalizeState } = require('./stateNormalizer')
+const { WifiHelperClient } = require('./wifiHelperClient')
 
 const BRIDGE_VERSION = require('../package.json').version
 
@@ -127,6 +128,214 @@ class RobotManager extends EventEmitter {
 		this.updatedAt = new Date().toISOString()
 		this.mockTimer = null
 		this.mockTick = 0
+		this.wifiHelper = new WifiHelperClient(env)
+		/** @type {{phase:string,ok:boolean|null,error:string|null,detail:object|null,updated_at:string}} */
+		this.softapStatus = {
+			phase: 'idle',
+			ok: null,
+			error: null,
+			detail: null,
+			updated_at: new Date().toISOString(),
+		}
+		this._softapRunning = false
+	}
+
+	/**
+	 * @param {string} phase
+	 * @param {object} [patch]
+	 */
+	#setSoftapStatus(phase, patch = {}) {
+		this.softapStatus = {
+			phase,
+			ok: patch.ok !== undefined ? patch.ok : this.softapStatus.ok,
+			error: patch.error !== undefined ? patch.error : null,
+			detail: patch.detail !== undefined ? patch.detail : this.softapStatus.detail,
+			updated_at: new Date().toISOString(),
+		}
+	}
+
+	/** @returns {object} Soft-AP provision progress for UI polling */
+	getSoftapStatus() {
+		return { ...this.softapStatus }
+	}
+
+	/**
+	 * Scan for Roomba Soft-AP SSIDs via the host wifi-helper.
+	 *
+	 * @param {boolean} [roombaOnly]
+	 */
+	async scanSoftAp(roombaOnly = true) {
+		if (this.mock || this.env.ROOMBA_WIFI_HELPER_MOCK === '1') {
+			return {
+				ok: true,
+				mock: true,
+				networks: [{
+					ssid: 'Roomba-3165811C32410750',
+					bssid: '80:C5:F2:C4:15:DE',
+					chan: 1,
+					signal: 60,
+					security: '--',
+				}],
+			}
+		}
+		const result = await this.wifiHelper.scan(roombaOnly)
+		return { ok: true, ...result }
+	}
+
+	/**
+	 * Orchestrate Soft-AP Wi-Fi provision → leave Soft-AP → LAN discover → optional connect.
+	 *
+	 * @param {object} opts
+	 * @param {string} opts.home_ssid
+	 * @param {string} opts.home_pass
+	 * @param {string} [opts.robot_ssid]
+	 * @param {string} [opts.bssid]
+	 * @param {string} [opts.blid]
+	 * @param {string} [opts.name]
+	 * @param {string} [opts.timezone]
+	 * @param {string} [opts.country]
+	 * @param {number} [opts.localtimeoffset]
+	 * @param {boolean} [opts.connect=true]
+	 * @param {boolean} [opts.discover=true]
+	 */
+	async softapProvision(opts = {}) {
+		if (this._softapRunning) {
+			const err = new Error('softap provision already running')
+			err.status = 409
+			throw err
+		}
+		this._softapRunning = true
+		this.#setSoftapStatus('starting', { ok: null, error: null, detail: null })
+
+		try {
+			const homeSsid = String(opts.home_ssid || opts.ssid || '').trim()
+			const homePass = String(opts.home_pass || opts.pass || opts.password || '')
+			if (!homeSsid || !homePass) {
+				const err = new Error('home_ssid and home_pass are required')
+				err.status = 400
+				throw err
+			}
+
+			let robotSsid = String(opts.robot_ssid || opts.softap_ssid || '').trim()
+			let bssid = opts.bssid || ''
+			let chan = opts.chan
+
+			this.#setSoftapStatus('scanning')
+			if (!robotSsid) {
+				const scan = await this.scanSoftAp(true)
+				const networks = scan.networks || []
+				if (!networks.length) {
+					const err = new Error(
+						'No Roomba Soft-AP found — put the robot in Soft-AP mode (HOME+SPOT until melody)',
+					)
+					err.status = 404
+					throw err
+				}
+				robotSsid = networks[0].ssid
+				bssid = networks[0].bssid || bssid
+				chan = networks[0].chan
+			}
+
+			this.#setSoftapStatus('provisioning', { detail: { robot_ssid: robotSsid, home_ssid: homeSsid } })
+
+			let prov
+			if (this.mock || this.env.ROOMBA_WIFI_HELPER_MOCK === '1') {
+				const blidMatch = robotSsid.match(/^(?:Roomba|iRobot)-([0-9A-Fa-f]{16,})$/i)
+				prov = {
+					ok: true,
+					mock: true,
+					blid: (opts.blid || (blidMatch && blidMatch[1]) || '3165811C32410750').toUpperCase(),
+					password: `:1:${Math.floor(Date.now() / 1000)}:mocksoftap00001`,
+					steps: ['mock'],
+				}
+			} else {
+				prov = await this.wifiHelper.provision({
+					robot_ssid: robotSsid,
+					bssid,
+					chan,
+					ssid: homeSsid,
+					pass: homePass,
+					blid: opts.blid,
+					timezone: opts.timezone || 'America/Los_Angeles',
+					country: opts.country || 'US',
+					localtimeoffset: opts.localtimeoffset,
+					wait_ms: Number(opts.wait_ms || 90_000),
+					join: true,
+					leave: true,
+				})
+			}
+
+			const blid = String(prov.blid || '').toUpperCase()
+			const password = String(prov.password || '')
+			if (!blid || !password) {
+				const err = new Error('softap provision returned incomplete credentials')
+				err.status = 502
+				throw err
+			}
+
+			let lanIp = ''
+			let candidates = []
+			if (opts.discover !== false) {
+				this.#setSoftapStatus('discovering', { detail: { blid, robot_ssid: robotSsid } })
+				// Robot needs time to associate + DHCP on home Wi-Fi after Soft-AP drops;
+				// observed 15-60 s, so poll rather than taking a single shot.
+				await new Promise((r) => setTimeout(r, Number(opts.discover_delay_ms || 15_000)))
+				const attempts = Number(opts.discover_attempts || 4)
+				for (let i = 0; i < attempts; i++) {
+					const discovered = await this.discover(Number(opts.discover_timeout_ms || 20_000))
+					candidates = discovered.candidates || []
+					// Only accept a same-BLID match, or a lone candidate. Picking
+					// candidates[0] blind would target a different robot on the LAN.
+					const match = candidates.find((c) => String(c.blid || '').toUpperCase() === blid)
+						|| (candidates.length === 1 ? candidates[0] : null)
+					if (match && match.ip) {
+						lanIp = String(match.ip)
+						break
+					}
+					this.#setSoftapStatus('discovering', {
+						detail: { blid, robot_ssid: robotSsid, attempt: i + 1, of: attempts },
+					})
+				}
+			}
+
+			let connectHealth = null
+			if (opts.connect !== false && lanIp) {
+				this.#setSoftapStatus('connecting', { detail: { blid, ip: lanIp } })
+				connectHealth = this.connect({
+					blid,
+					password,
+					ip: lanIp,
+					name: opts.name,
+				})
+			} else if (opts.connect !== false && !lanIp) {
+				// Stash credentials even without LAN IP so PHP can save them.
+				this.blid = blid
+				this.password = password
+			}
+
+			const detail = {
+				blid,
+				password,
+				ip: lanIp || null,
+				robot_ssid: robotSsid,
+				home_ssid: homeSsid,
+				name: opts.name || (candidates[0] && candidates[0].robotname) || null,
+				candidates,
+				connect: connectHealth,
+				steps: prov.steps || [],
+				mock: Boolean(prov.mock || this.mock),
+			}
+			this.#setSoftapStatus('done', { ok: true, error: null, detail })
+			return { ok: true, ...detail, status: this.getSoftapStatus() }
+		} catch (err) {
+			this.#setSoftapStatus('error', {
+				ok: false,
+				error: err && err.message ? err.message : String(err),
+			})
+			throw err
+		} finally {
+			this._softapRunning = false
+		}
 	}
 
 	/** @returns {boolean} true when credentials are present (or mock mode). */
@@ -704,13 +913,16 @@ class RobotManager extends EventEmitter {
 				host,
 				port: 8883,
 				rejectUnauthorized: false,
-				ciphers: process.env.ROBOT_CIPHERS || 'AES128-SHA256,TLS_AES_256_GCM_SHA384',
+				// Match dorita980 + OpenSSL 3: legacy renegotiation is applied by tlsLegacy.js
+				ciphers: process.env.ROBOT_CIPHERS || 'DEFAULT@SECLEVEL=0',
+				minVersion: 'TLSv1',
 				timeout: timeoutMs,
 			}
 			if (constants && constants.SSL_OP_LEGACY_SERVER_CONNECT) {
 				options.secureOptions = constants.SSL_OP_LEGACY_SERVER_CONNECT
 			}
 			let sliceFrom = 13
+			const chunks = []
 			const socket = tls.connect(options, () => {
 				socket.write(Buffer.from('f005efcc3b2900', 'hex'))
 			})
@@ -718,24 +930,39 @@ class RobotManager extends EventEmitter {
 				socket.destroy()
 				reject(this.#httpError(504, 'timeout waiting for the robot password — hold HOME until it beeps, then retry'))
 			}, timeoutMs)
-			socket.on('data', (data) => {
-				// The robot answers with a 2-byte preamble on some firmwares,
-				// which shifts where the password starts.
-				if (data.length === 2) {
-					sliceFrom = 9
-					return
-				}
+			const finish = (err, value) => {
 				clearTimeout(timer)
-				socket.end()
-				if (data.length <= 7) {
-					reject(this.#httpError(409, 'robot is not in onboarding mode — hold HOME until it beeps, then retry'))
+				try { socket.end() } catch { /* ignore */ }
+				if (err) {
+					reject(err)
+				} else {
+					resolve(value)
+				}
+			}
+			socket.on('data', (data) => {
+				const buf = Buffer.isBuffer(data) ? data : Buffer.from(data, 'binary')
+				// The robot answers with a 2-byte preamble on some firmwares,
+				// which shifts where the password starts (dorita980 getpassword.js).
+				if (buf.length === 2) {
+					sliceFrom = 9
+					chunks.push(buf)
 					return
 				}
-				resolve(Buffer.from(data).slice(sliceFrom).toString())
+				chunks.push(buf)
+				const all = Buffer.concat(chunks)
+				if (all.length <= 7) {
+					finish(this.#httpError(409, 'robot is not in onboarding mode — hold HOME until it beeps, then retry'))
+					return
+				}
+				const extracted = extractRoombaPassword(all, sliceFrom)
+				if (!extracted) {
+					finish(this.#httpError(409, 'robot is not in onboarding mode — hold HOME until it beeps, then retry'))
+					return
+				}
+				finish(null, extracted)
 			})
 			socket.on('error', (err) => {
-				clearTimeout(timer)
-				reject(this.#httpError(502, err && err.message ? err.message : String(err)))
+				finish(this.#httpError(502, err && err.message ? err.message : String(err)))
 			})
 		})
 
@@ -948,4 +1175,35 @@ class RobotManager extends EventEmitter {
 	}
 }
 
-module.exports = { ACTIONS, MOCK_TRANSITIONS, RobotManager, mockSeedState }
+/**
+ * Pull the dorita980 local password out of a get-password TLS payload.
+ * Prefer the canonical `:1:<epoch>:<secret>` form (regex), then fall back to
+ * the dorita980 slice offsets. Rejects short "not in onboarding" packets.
+ *
+ * @param {Buffer} buf
+ * @param {number} preferredOffset dorita980 default 13, or 9 after a 2-byte preamble
+ * @returns {string|null}
+ */
+function extractRoombaPassword(buf, preferredOffset = 13) {
+	if (!Buffer.isBuffer(buf) || buf.length <= 7) {
+		return null
+	}
+	const asText = buf.toString('binary')
+	const match = asText.match(/:1:\d+:[ -~]+/)
+	if (match && match[0]) {
+		return match[0].trim()
+	}
+	const offsets = [preferredOffset, 13, 9, 7, 8, 10, 11, 12, 14, 15, 16]
+	for (const off of offsets) {
+		if (off >= buf.length) {
+			continue
+		}
+		const candidate = buf.subarray(off).toString('utf8').replace(/\0+$/g, '').trim()
+		if (candidate.startsWith(':1:') && candidate.length >= 20 && /^[\x20-\x7e]+$/.test(candidate)) {
+			return candidate
+		}
+	}
+	return null
+}
+
+module.exports = { ACTIONS, MOCK_TRANSITIONS, RobotManager, mockSeedState, extractRoombaPassword }

@@ -380,14 +380,176 @@ class RobotService
 	}
 
 	/** @return array<string, mixed> */
+	public function getHomeWifiPrefs(): array
+	{
+		$ssid = trim($this->config->getAppValue(Application::APP_ID, 'home_wifi_ssid', 'Sheela 6'));
+		$pass = $this->crypto->get('home_wifi_password', '');
+		$timezone = trim($this->config->getAppValue(Application::APP_ID, 'home_timezone', 'America/Los_Angeles'));
+		$country = trim($this->config->getAppValue(Application::APP_ID, 'home_country', 'US'));
+		return [
+			'ssid' => $ssid !== '' ? $ssid : 'Sheela 6',
+			'password_set' => $pass !== '',
+			'timezone' => $timezone !== '' ? $timezone : 'America/Los_Angeles',
+			'country' => $country !== '' ? $country : 'US',
+		];
+	}
+
+	/**
+	 * @param array{ssid?:string,password?:string,timezone?:string,country?:string} $prefs
+	 */
+	public function setHomeWifiPrefs(array $prefs): void
+	{
+		if (array_key_exists('ssid', $prefs)) {
+			$this->config->setAppValue(Application::APP_ID, 'home_wifi_ssid', trim((string) $prefs['ssid']));
+		}
+		if (array_key_exists('password', $prefs) && (string) $prefs['password'] !== '') {
+			$this->crypto->set('home_wifi_password', (string) $prefs['password']);
+		}
+		if (array_key_exists('timezone', $prefs)) {
+			$this->config->setAppValue(Application::APP_ID, 'home_timezone', trim((string) $prefs['timezone']));
+		}
+		if (array_key_exists('country', $prefs)) {
+			$this->config->setAppValue(Application::APP_ID, 'home_country', trim((string) $prefs['country']));
+		}
+	}
+
+	/**
+	 * Factory Soft-AP setup: push home Wi-Fi, save robot credentials, connect.
+	 *
+	 * @param array<string, mixed> $opts
+	 * @return array<string, mixed>
+	 */
+	public function softapSetup(array $opts): array
+	{
+		$name = trim((string) ($opts['name'] ?? 'Alfred'));
+		if ($name === '') {
+			$name = 'Alfred';
+		}
+
+		$home = $this->getHomeWifiPrefs();
+		$ssid = trim((string) ($opts['home_ssid'] ?? $opts['ssid'] ?? $home['ssid']));
+		$pass = (string) ($opts['home_pass'] ?? $opts['password'] ?? '');
+		if ($pass === '') {
+			$pass = $this->crypto->get('home_wifi_password', '');
+		}
+		if ($ssid === '' || $pass === '') {
+			return ['ok' => false, 'error' => 'home_wifi_required'];
+		}
+
+		$this->setHomeWifiPrefs([
+			'ssid' => $ssid,
+			'password' => $pass,
+			'timezone' => (string) ($opts['timezone'] ?? $home['timezone']),
+			'country' => (string) ($opts['country'] ?? $home['country']),
+		]);
+
+		$payload = [
+			'home_ssid' => $ssid,
+			'home_pass' => $pass,
+			'robot_ssid' => (string) ($opts['robot_ssid'] ?? ''),
+			'bssid' => (string) ($opts['bssid'] ?? ''),
+			'blid' => (string) ($opts['blid'] ?? ''),
+			'name' => $name,
+			'timezone' => (string) ($opts['timezone'] ?? $home['timezone']),
+			'country' => (string) ($opts['country'] ?? $home['country']),
+			'localtimeoffset' => isset($opts['localtimeoffset']) ? (int) $opts['localtimeoffset'] : -420,
+			'discover' => ($opts['discover'] ?? true) !== false,
+			'connect' => ($opts['connect'] ?? true) !== false,
+		];
+
+		$resp = $this->bridge->softapProvision($payload);
+		$body = is_array($resp['body'] ?? null) ? $resp['body'] : [];
+		if (!$resp['ok']) {
+			return [
+				'ok' => false,
+				'error' => $resp['error'] ?? ($body['error'] ?? 'softap_provision_failed'),
+				'body' => $body,
+				'status' => $body['status'] ?? null,
+			];
+		}
+
+		$blid = (string) ($body['blid'] ?? '');
+		$password = (string) ($body['password'] ?? '');
+		$ip = (string) ($body['ip'] ?? '');
+		if ($blid === '' || $password === '') {
+			return ['ok' => false, 'error' => 'incomplete_credentials', 'body' => $body];
+		}
+
+		$robot = $this->upsertRobot([
+			'name' => $name !== '' ? $name : (string) ($body['name'] ?? 'Alfred'),
+			'blid' => $blid,
+			'password' => $password,
+			'host' => $ip !== '' ? $ip : (string) ($opts['host'] ?? ''),
+			'port' => 8883,
+		]);
+
+		// If bridge did not connect (no LAN IP yet), try once more when we have an IP.
+		$connect = $body['connect'] ?? null;
+		if ($ip !== '' && (empty($connect['connected']) && empty($connect['mock']))) {
+			$connectResp = $this->bridge->connect([
+				'blid' => $blid,
+				'password' => $password,
+				'ip' => $ip,
+				'name' => $robot->getName(),
+				'robot_id' => (int) $robot->getId(),
+			]);
+			$connect = $connectResp['body'] ?? $connect;
+		}
+
+		return [
+			'ok' => true,
+			'robot' => $robot->jsonSerialize(),
+			'blid' => $blid,
+			'ip' => $ip !== '' ? $ip : null,
+			'connect' => $connect,
+			'status' => $body['status'] ?? null,
+			'candidates' => $body['candidates'] ?? [],
+			'warning' => $ip === ''
+				? 'Robot credentials saved, but LAN IP not discovered yet — reserve DHCP and use Auto discover.'
+				: null,
+		];
+	}
+
+	/** @return array<string, mixed> */
+	public function softapScan(array $opts = []): array
+	{
+		$resp = $this->bridge->softapScan($opts);
+		$body = is_array($resp['body'] ?? null) ? $resp['body'] : [];
+		return [
+			'ok' => $resp['ok'],
+			'networks' => is_array($body['networks'] ?? null) ? $body['networks'] : [],
+			'mock' => $body['mock'] ?? null,
+			'error' => $resp['error'],
+		];
+	}
+
+	/** @return array<string, mixed> */
+	public function softapStatus(): array
+	{
+		$resp = $this->bridge->softapStatus();
+		$body = is_array($resp['body'] ?? null) ? $resp['body'] : [];
+		return [
+			'ok' => $resp['ok'],
+			'status' => $body['status'] ?? $body,
+			'error' => $resp['error'],
+		];
+	}
+
+	/** @return array<string, mixed> */
 	public function adminBootstrap(): array
 	{
 		$primary = $this->getPrimaryRobot();
+		$robot = $primary?->jsonSerialize();
+		if (is_array($robot)) {
+			// UI historically looked for password_set; Robot exposes has_password.
+			$robot['password_set'] = !empty($robot['has_password']);
+		}
 		return [
 			'bridge_url' => $this->getBridgeUrl(),
 			'operator_group' => $this->getOperatorGroup(),
 			'retention_days' => $this->getRetentionDays(),
-			'robot' => $primary?->jsonSerialize(),
+			'robot' => $robot,
+			'home_wifi' => $this->getHomeWifiPrefs(),
 		];
 	}
 }

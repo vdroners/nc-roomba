@@ -19,6 +19,7 @@ class AdminSecretCrypto
 	/** @var list<string> */
 	public const SECRET_KEYS = [
 		'robot_password',
+		'home_wifi_password',
 	];
 
 	public function __construct(

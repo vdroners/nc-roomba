@@ -8,7 +8,7 @@ DATE ?= $(shell date +%F)
 
 .PHONY: build test deploy ship bridge-up bridge-down bridge-test \
 	bump-patch bump-minor gate-preflight gate-live gate-gui \
-	phpunit run-phpunit
+	phpunit run-phpunit helper-install helper-test helper-up helper-down
 
 build:
 	cd "$(ROOT)" && npm run build
@@ -27,6 +27,7 @@ _bump:
 	sed -i "s#<version>$$cur</version>#<version>$$next</version>#" "$(ROOT)appinfo/info.xml"; \
 	sed -i "s#\"version\": \"$$cur\"#\"version\": \"$$next\"#" "$(ROOT)package.json"; \
 	sed -i "s#\"version\": \"$$cur\"#\"version\": \"$$next\"#" "$(ROOT)bridge/package.json"; \
+	sed -i "s#\"version\": \"$$cur\"#\"version\": \"$$next\"#" "$(ROOT)wifi-helper/package.json"; \
 	if [ -f "$(ROOT)package-lock.json" ]; then \
 		sed -i "0,/\"version\": \"$$cur\"/s##\"version\": \"$$next\"#" "$(ROOT)package-lock.json"; \
 		sed -i "0,/\"version\": \"$$cur\"/s##\"version\": \"$$next\"#" "$(ROOT)package-lock.json"; \
@@ -38,17 +39,49 @@ _bump:
 	fi; \
 	echo "Bumped $$cur -> $$next"
 
+# Prefer `.env` (ROOMBA_MOCK=0 for a real robot). Do NOT export ROOMBA_MOCK=1
+# here — a shell override wins over `.env` and silently puts the bridge into mock.
 bridge-up:
-	ROOMBA_MOCK=$${ROOMBA_MOCK:-1} $(BRIDGE_COMPOSE) up -d --build
+	$(BRIDGE_COMPOSE) up -d --build
 	@docker network connect $(BRIDGE_NET) $(CONTAINER) 2>/dev/null \
 		|| echo "cloud_app already on $(BRIDGE_NET) (or not running)"
-	@echo "nc_roomba_bridge up on $(BRIDGE_NET)"
+	@echo "nc_roomba_bridge up on $(BRIDGE_NET) (ROOMBA_MOCK from .env / compose default)"
 
 bridge-down:
 	$(BRIDGE_COMPOSE) down
 
 bridge-test:
 	cd "$(ROOT)bridge" && npm test
+
+helper-test:
+	cd "$(ROOT)wifi-helper" && npm test
+
+# Install host Soft-AP helper (needs sudo). Generates token into /etc if missing.
+helper-install:
+	@if [ -f "$(ROOT)wifi-helper/package-lock.json" ]; then \
+		cd "$(ROOT)wifi-helper" && npm ci --omit=dev; \
+	else \
+		cd "$(ROOT)wifi-helper" && npm install --omit=dev; \
+	fi
+	@token=$$(grep -E '^ROOMBA_WIFI_HELPER_TOKEN=' "$(ROOT).env" 2>/dev/null | cut -d= -f2-); \
+	if [ -z "$$token" ]; then token=$$(openssl rand -hex 16); \
+		grep -q '^ROOMBA_WIFI_HELPER_TOKEN=' "$(ROOT).env" 2>/dev/null \
+			&& sed -i "s/^ROOMBA_WIFI_HELPER_TOKEN=.*/ROOMBA_WIFI_HELPER_TOKEN=$$token/" "$(ROOT).env" \
+			|| echo "ROOMBA_WIFI_HELPER_TOKEN=$$token" >> "$(ROOT).env"; \
+		echo "Wrote ROOMBA_WIFI_HELPER_TOKEN to .env"; \
+	fi; \
+	echo "ROOMBA_WIFI_HELPER_TOKEN=$$token" | sudo tee /etc/nc-roomba-wifi-helper.env >/dev/null; \
+	echo "ROOMBA_WIFI_IFACE=wlp2s0" | sudo tee -a /etc/nc-roomba-wifi-helper.env >/dev/null; \
+	sudo cp "$(ROOT)wifi-helper/systemd/nc-roomba-wifi-helper.service" /etc/systemd/system/; \
+	sudo systemctl daemon-reload; \
+	sudo systemctl enable --now nc-roomba-wifi-helper; \
+	sudo systemctl status nc-roomba-wifi-helper --no-pager || true
+
+helper-up:
+	sudo systemctl start nc-roomba-wifi-helper
+
+helper-down:
+	sudo systemctl stop nc-roomba-wifi-helper
 
 run-phpunit:
 	@if [ -f "$(ROOT)vendor/bin/phpunit" ] && command -v php >/dev/null 2>&1; then \
@@ -62,7 +95,7 @@ run-phpunit:
 
 phpunit: run-phpunit
 
-test: phpunit bridge-test
+test: phpunit bridge-test helper-test
 	cd "$(ROOT)" && npm run test
 
 deploy: build

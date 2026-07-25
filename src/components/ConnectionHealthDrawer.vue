@@ -59,10 +59,10 @@ import { NcButton, NcNoteCard } from '@nextcloud/vue'
 /** Fallback when PHP has not supplied `connection_health.recovery`. */
 const DEFAULT_CHECKLIST = [
 	'Close the iRobot mobile app completely — it takes the robot\'s only MQTT session.',
-	'Stop any other Roomba integration (Home Assistant, rest980) pointed at Alfred.',
+	'Stop any other Roomba integration (Home Assistant, rest980) pointed at this robot.',
 	'Wait 30 seconds for the robot to drop the stale session.',
 	'Press Retry connect.',
-	'Confirm Alfred still has its DHCP reservation (the IP must not move).',
+	'Confirm the robot still has its DHCP reservation (the IP must not move).',
 	'From the Nextcloud host: nc -zv <alfred-ip> 8883',
 ]
 

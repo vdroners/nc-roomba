@@ -109,6 +109,16 @@ class SettingsController extends Controller
 		if (isset($params['retention_days'])) {
 			$this->robots->setRetentionDays((int) $params['retention_days']);
 		}
+		if (isset($params['home_wifi']) && is_array($params['home_wifi'])) {
+			$this->robots->setHomeWifiPrefs($params['home_wifi']);
+		} elseif (isset($params['home_wifi_ssid']) || isset($params['home_wifi_password'])) {
+			$this->robots->setHomeWifiPrefs([
+				'ssid' => (string) ($params['home_wifi_ssid'] ?? ''),
+				'password' => (string) ($params['home_wifi_password'] ?? ''),
+				'timezone' => (string) ($params['home_timezone'] ?? 'America/Los_Angeles'),
+				'country' => (string) ($params['home_country'] ?? 'US'),
+			]);
+		}
 		if (isset($params['blid'], $params['host'])) {
 			$this->robots->upsertRobot([
 				'name' => (string) ($params['name'] ?? 'Alfred'),
@@ -135,6 +145,35 @@ class SettingsController extends Controller
 			'name' => (string) ($params['name'] ?? 'Alfred'),
 			'timeout' => (int) ($params['timeout'] ?? 60),
 		]);
+		return new JSONResponse($result, !empty($result['ok']) ? Http::STATUS_OK : Http::STATUS_BAD_GATEWAY);
+	}
+
+	public function softapScan(): JSONResponse
+	{
+		$this->permissions->requireAdmin();
+		$params = $this->request->getParams();
+		$result = $this->robots->softapScan([
+			'roomba_only' => ($params['roomba_only'] ?? true) !== false && ($params['roomba_only'] ?? true) !== '0',
+		]);
+		return new JSONResponse($result, !empty($result['ok']) ? Http::STATUS_OK : Http::STATUS_BAD_GATEWAY);
+	}
+
+	public function softapSetup(): JSONResponse
+	{
+		$this->permissions->requireAdmin();
+		$params = $this->request->getParams();
+		$result = $this->robots->softapSetup($params);
+		$status = !empty($result['ok']) ? Http::STATUS_OK : Http::STATUS_BAD_GATEWAY;
+		if (($result['error'] ?? '') === 'home_wifi_required') {
+			$status = Http::STATUS_BAD_REQUEST;
+		}
+		return new JSONResponse($result, $status);
+	}
+
+	public function softapStatus(): JSONResponse
+	{
+		$this->permissions->requireAdmin();
+		$result = $this->robots->softapStatus();
 		return new JSONResponse($result, !empty($result['ok']) ? Http::STATUS_OK : Http::STATUS_BAD_GATEWAY);
 	}
 

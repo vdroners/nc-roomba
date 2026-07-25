@@ -15,7 +15,7 @@
 		@close-drawer="store.closeDrawer()"
 		@retry-connect="store.connectTest()">
 		<NcNoteCard v-if="!store.canOperate" type="warning" heading="Read-only access">
-			Controlling Alfred needs the <code>roomba-operators</code> group (or an
+			Controlling the robot needs the <code>roomba-operators</code> group (or an
 			administrator account). Status, history and schedule stay visible.
 		</NcNoteCard>
 
