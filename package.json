@@ -1,6 +1,6 @@
 {
   "name": "nc_roomba",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "NC Roomba — Nextcloud control for Alfred (Roomba 960)",
   "license": "AGPL-3.0-or-later",

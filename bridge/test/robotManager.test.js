@@ -136,8 +136,9 @@ test('bbrun exposes lifetime counters for the maintenance hints', async () => {
 })
 
 test('discover returns a mock candidate with a blid', async () => {
-	const manager = mockManager({ ROBOT_IP: '192.168.1.77' })
-	const { candidates } = await manager.discover()
+	const manager = mockManager({ ROBOT_IP: '192.168.1.77', ROOMBA_DISCOVER_SUBNETS: '' })
+	// Offline/deterministic: assert mock fallback, not the LAN :8883 sweep.
+	const { candidates } = await manager.discover(100, { skip_scan: true, skip_udp: true })
 	assert.equal(candidates.length, 1)
 	assert.equal(candidates[0].ip, '192.168.1.77')
 	assert.ok(candidates[0].blid)

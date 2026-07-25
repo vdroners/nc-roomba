@@ -1,6 +1,6 @@
 # NC Roomba
 
-**Version 0.1.0**
+**Version 0.1.1**
 
 Nextcloud app to control Alfred (Roomba 960) over the local LAN MQTT API.
 Remote access is via your Nextcloud DDNS URL; the private Node bridge never
@@ -9,6 +9,7 @@ binds a public port.
 ## Features
 
 - Start / pause / resume / stop / dock / spot / find
+- Auto discover (LAN `:8883` scan + UDP) for Alfred’s IP / BLID
 - Live status strip (battery, bin, Wi‑Fi, phase)
 - Mission history from install (local only)
 - Schedule week editor, preferences, retention

@@ -1,26 +1,48 @@
 <template>
-  <div v-if="show" class="nc-roomba-panel" data-testid="error-decoder">
-    <h3>{{ decoded.title }}</h3>
-    <p>{{ decoded.detail }}</p>
-    <p v-if="decoded.action"><strong>Next step:</strong> {{ decoded.action }}</p>
-    <button v-if="conflict" class="secondary" @click="$emit('open-drawer')">Open connection help</button>
-  </div>
+	<div v-if="decoded.show" class="nc-roomba-panel" data-testid="error-decoder">
+		<NcNoteCard :type="decoded.severity" :heading="heading">
+			<p data-field="decoded-detail">{{ decoded.detail }}</p>
+			<p v-if="decoded.action" data-field="decoded-action">
+				<strong>Next step:</strong> {{ decoded.action }}
+			</p>
+			<NcButton v-if="conflict" type="secondary" @click="$emit('open-drawer')">
+				Open connection help
+			</NcButton>
+		</NcNoteCard>
+	</div>
 </template>
 
 <script>
+import { NcButton, NcNoteCard } from '@nextcloud/vue'
+
+/**
+ * UI-3: plain-English error / notReady panel. The catalog lookup happens
+ * server-side (`ErrorDecoderService` over `knowledge/error_codes.yaml`) so the
+ * notification, the Activity entry and this panel all quote identical copy.
+ */
 export default {
-  name: 'ErrorDecoderPanel',
-  props: {
-    decoded: { type: Object, default: null },
-    conflict: { type: [Boolean, String], default: false },
-  },
-  computed: {
-    show() {
-      if (!this.decoded) return false
-      if (!this.decoded.code) return false
-      if (this.decoded.kind === 'ok' || this.decoded.kind === 'none') return false
-      return true
-    },
-  },
+	name: 'ErrorDecoderPanel',
+
+	components: { NcButton, NcNoteCard },
+
+	props: {
+		/** Output of `decoratedError(state)`. */
+		decoded: {
+			type: Object,
+			required: true,
+		},
+		conflict: {
+			type: [Boolean, String],
+			default: false,
+		},
+	},
+
+	computed: {
+		heading() {
+			return this.decoded.code
+				? `${this.decoded.title} (code ${this.decoded.code})`
+				: this.decoded.title
+		},
+	},
 }
 </script>

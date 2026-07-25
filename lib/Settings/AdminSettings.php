@@ -22,6 +22,8 @@ class AdminSettings implements ISettings
 	public function getForm(): TemplateResponse
 	{
 		Util::addStyle(Application::APP_ID, 'nc-roomba-theme');
+		Util::addStyle(Application::APP_ID, 'style');
+		Util::addScript(Application::APP_ID, 'nc_roomba-admin');
 
 		$boot = $this->robots->adminBootstrap();
 		$params = [

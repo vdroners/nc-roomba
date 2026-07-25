@@ -80,10 +80,10 @@ class RobotController extends Controller
 	public function connectTest(int $id): JSONResponse
 	{
 		$this->permissions->requireOperator();
-		$resp = $this->bridge->connectTest($id);
+		$result = $this->robots->connectTest($id);
 		return new JSONResponse(
-			$resp['body'] ?? ['ok' => $resp['ok'], 'error' => $resp['error']],
-			$resp['ok'] ? Http::STATUS_OK : Http::STATUS_BAD_GATEWAY,
+			$result,
+			!empty($result['ok']) ? Http::STATUS_OK : Http::STATUS_BAD_GATEWAY,
 		);
 	}
 }

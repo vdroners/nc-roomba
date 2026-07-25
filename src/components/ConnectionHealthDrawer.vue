@@ -1,39 +1,133 @@
 <template>
-  <aside class="nc-roomba-drawer" :class="{ open }" data-testid="connection-drawer">
-    <button @click="$emit('close')" style="float:right">Close</button>
-    <h3>Connection health</h3>
-    <p>MQTT: <strong>{{ mqtt }}</strong></p>
-    <p v-if="conflict" class="warn">{{ conflict }}</p>
-    <p>Bridge: {{ bridgeVersion }} · uptime {{ uptime }}s</p>
-    <p>Last command: {{ lastCommandLabel }}</p>
-    <h4>Recovery checklist</h4>
-    <ol>
-      <li>Close the iRobot mobile app completely.</li>
-      <li>Disable other Roomba integrations (Home Assistant, etc.).</li>
-      <li>Wait 30 seconds.</li>
-      <li>Retry connect from Admin settings.</li>
-      <li>Confirm DHCP reservation and <code>nc -zv IP 8883</code>.</li>
-    </ol>
-  </aside>
+	<aside
+		:class="['nc-roomba-drawer', { open }]"
+		:aria-hidden="String(!open)"
+		aria-label="Connection health"
+		data-testid="connection-drawer">
+		<div class="nc-roomba-drawer__header">
+			<h3>Connection health</h3>
+			<NcButton type="tertiary" aria-label="Close connection health" @click="$emit('close')">
+				Close
+			</NcButton>
+		</div>
+
+		<NcNoteCard v-if="conflictMessage" type="warning" heading="Single MQTT session in use">
+			{{ conflictMessage }}
+		</NcNoteCard>
+		<NcNoteCard v-else-if="stale" type="warning" heading="State is stale">
+			No fresh sample from the robot. The bridge may have lost the session.
+		</NcNoteCard>
+
+		<dl class="nc-roomba-stats">
+			<div class="nc-roomba-stats__item">
+				<dt>MQTT</dt>
+				<dd data-field="mqtt">{{ mqtt }}</dd>
+			</div>
+			<div class="nc-roomba-stats__item">
+				<dt>Bridge</dt>
+				<dd data-field="bridge">{{ bridgeLabel }}</dd>
+			</div>
+			<div class="nc-roomba-stats__item">
+				<dt>Transport</dt>
+				<dd data-field="transport">{{ transport }}</dd>
+			</div>
+			<div class="nc-roomba-stats__item">
+				<dt>Last command</dt>
+				<dd data-field="last-command">{{ lastCommandLabel }}</dd>
+			</div>
+		</dl>
+
+		<h4>Recovery checklist</h4>
+		<ol class="nc-roomba-checklist">
+			<li v-for="(step, index) in checklist" :key="index">{{ step }}</li>
+		</ol>
+
+		<div class="nc-roomba-actions">
+			<NcButton type="primary" :disabled="!canAdmin" @click="$emit('retry')">
+				Retry connect
+			</NcButton>
+		</div>
+		<p v-if="!canAdmin" class="nc-roomba-muted">
+			Retry needs an administrator — the connect test rewrites the bridge session.
+		</p>
+	</aside>
 </template>
 
 <script>
+import { NcButton, NcNoteCard } from '@nextcloud/vue'
+
+/** Fallback when PHP has not supplied `connection_health.recovery`. */
+const DEFAULT_CHECKLIST = [
+	'Close the iRobot mobile app completely — it takes the robot\'s only MQTT session.',
+	'Stop any other Roomba integration (Home Assistant, rest980) pointed at Alfred.',
+	'Wait 30 seconds for the robot to drop the stale session.',
+	'Press Retry connect.',
+	'Confirm Alfred still has its DHCP reservation (the IP must not move).',
+	'From the Nextcloud host: nc -zv <alfred-ip> 8883',
+]
+
+/**
+ * UI-7: the robot accepts one MQTT client at a time, which is the single most
+ * common support call. This drawer states which side owns the session and what
+ * to do about it, instead of leaving a red chip with no explanation.
+ */
 export default {
-  name: 'ConnectionHealthDrawer',
-  props: {
-    open: Boolean,
-    state: { type: Object, default: null },
-  },
-  computed: {
-    mqtt() { return this.state?.connection_health?.mqtt || 'unknown' },
-    conflict() { return this.state?.conflict || '' },
-    bridgeVersion() { return this.state?.bridge?.version || '—' },
-    uptime() { return this.state?.bridge?.uptime_s ?? '—' },
-    lastCommandLabel() {
-      const c = this.state?.connection_health?.last_command
-      if (!c || !c.action) return 'none'
-      return `${c.action} → ${c.result} @ ${c.ts || ''}`
-    },
-  },
+	name: 'ConnectionHealthDrawer',
+
+	components: { NcButton, NcNoteCard },
+
+	props: {
+		open: {
+			type: Boolean,
+			default: false,
+		},
+		state: {
+			type: Object,
+			default: null,
+		},
+		/** 'sse' | 'poll' | 'idle' — which live pipeline the store is using. */
+		transport: {
+			type: String,
+			default: 'idle',
+		},
+		canAdmin: {
+			type: Boolean,
+			default: false,
+		},
+	},
+
+	computed: {
+		health() {
+			return (this.state && this.state.connection_health) || {}
+		},
+		mqtt() {
+			return this.health.mqtt || 'unknown'
+		},
+		stale() {
+			return Boolean(this.health.stale)
+		},
+		conflictMessage() {
+			return (this.state && this.state.conflict) || this.health.conflict || ''
+		},
+		bridgeLabel() {
+			const bridge = (this.state && this.state.bridge) || {}
+			if (!bridge.version) {
+				return this.health.bridge_ok ? 'reachable' : 'unreachable'
+			}
+			return `v${bridge.version} · up ${bridge.uptime_s ?? '—'}s${bridge.mock ? ' · mock' : ''}`
+		},
+		lastCommandLabel() {
+			const last = this.health.last_command
+			if (!last || !last.action) {
+				return 'none this session'
+			}
+			const who = last.uid ? ` by ${last.uid}` : ''
+			return `${last.action} → ${last.result || 'sent'}${who}`
+		},
+		checklist() {
+			const recovery = this.health.recovery
+			return Array.isArray(recovery) && recovery.length ? recovery : DEFAULT_CHECKLIST
+		},
+	},
 }
 </script>

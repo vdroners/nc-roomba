@@ -1,16 +1,22 @@
 {
   "name": "nc-roomba-bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Local MQTT bridge for NC Roomba (dorita980)",
-  "main": "server.js",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "start": "node server.js",
+    "start": "node index.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "dorita980": "^3.1.11",
     "express": "^4.21.0"
+  },
+  "optionalDependencies": {
+    "cors": "^2.8.6"
   },
   "license": "MIT"
 }

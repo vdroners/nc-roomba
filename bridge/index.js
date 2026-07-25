@@ -58,10 +58,20 @@ app.get('/health', (req, res) => {
 	res.json(manager.health())
 })
 
-app.get('/discover', wrap(async (req, res) => {
-	const result = await manager.discover(Number(req.query.timeout_ms || 6000))
+async function handleDiscover(req, res) {
+	const body = req.body || {}
+	const timeoutMs = Number(req.query.timeout_ms || body.timeout_ms || 8000)
+	const opts = {
+		ips: Array.isArray(body.ips) ? body.ips : undefined,
+		subnets: Array.isArray(body.subnets) ? body.subnets : undefined,
+		skip_scan: body.skip_scan === true,
+	}
+	const result = await manager.discover(timeoutMs, opts)
 	res.json({ ok: true, ...result })
-}))
+}
+
+app.get('/discover', wrap(handleDiscover))
+app.post('/discover', wrap(handleDiscover))
 
 app.post('/onboard/get-password', wrap(async (req, res) => {
 	const creds = await manager.getPassword((req.body || {}).ip)
@@ -71,6 +81,12 @@ app.post('/onboard/get-password', wrap(async (req, res) => {
 app.post('/connect', wrap(async (req, res) => {
 	const health = manager.connect(req.body || {})
 	res.status(health.connected || health.mock ? 200 : 202).json({ ok: true, ...health })
+}))
+
+app.post('/connect-test', wrap(async (req, res) => {
+	const health = manager.connect(req.body || {})
+	const ok = !!(health.connected || health.mock)
+	res.status(ok ? 200 : 502).json({ ok, ...health })
 }))
 
 app.get('/state', (req, res) => {

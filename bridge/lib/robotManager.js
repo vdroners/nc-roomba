@@ -14,6 +14,8 @@
 
 const { EventEmitter } = require('node:events')
 const tls = require('node:tls')
+const net = require('node:net')
+const os = require('node:os')
 const { constants } = require('node:crypto')
 
 const dorita980 = require('dorita980')
@@ -415,48 +417,262 @@ class RobotManager extends EventEmitter {
 	}
 
 	/**
-	 * LAN discovery (UDP broadcast on :5678).
+	 * LAN discovery. UDP broadcast often misses robots on busy Wi‑Fi, so we also
+	 * probe hint IPs / ROBOT_IP and TCP-scan configured subnets on :8883, then
+	 * call getRobotPublicInfo for each open host.
+	 *
+	 * Mock MQTT mode still runs a real LAN scan first so Auto Discover can find
+	 * Alfred while gates keep using the fake session.
 	 *
 	 * @param {number} [timeoutMs]
-	 * @returns {Promise<{ candidates: Array<object>, mock: boolean }>}
+	 * @param {{ ips?: string[], subnets?: string[], skip_scan?: boolean }} [opts]
+	 * @returns {Promise<{ candidates: Array<object>, robots: Array<object>, mock: boolean, sources: object }>}
 	 */
-	discover(timeoutMs = 6000) {
-		if (this.mock) {
-			return Promise.resolve({
-				candidates: [{
-					ip: this.ip || '192.168.1.50',
-					hostname: 'Roomba-MOCKBLID000000000000000000',
-					blid: this.blid || 'MOCKBLID000000000000000000',
-					robotname: 'Alfred',
-					sku: 'R960020',
-					ver: '3',
-				}],
-				mock: true,
+	async discover(timeoutMs = 8000, opts = {}) {
+		const sources = { udp: 0, probe: 0, scan: 0 }
+		const byIp = new Map()
+		const add = (data, source) => {
+			if (!data || !data.ip) return
+			const normalized = this.#normalizeDiscovery(data)
+			if (!normalized) return
+			const prev = byIp.get(normalized.ip) || {}
+			byIp.set(normalized.ip, {
+				...prev,
+				...normalized,
+				source: prev.source ? `${prev.source}+${source}` : source,
 			})
+			sources[source] = (sources[source] || 0) + 1
 		}
+
+		// 1) TCP :8883 scan first — works across Docker NAT when UDP broadcast does not.
+		if (!opts.skip_scan) {
+			const subnets = this.#discoverSubnets(opts.subnets)
+			const openIps = await this.#scanPort8883(subnets, 48)
+			for (const ip of openIps) {
+				const info = await this.#irobotUdpProbe(ip, 2500)
+				if (info) add(info, 'scan')
+			}
+		}
+
+		// 2) Explicit hint / ROBOT_IP probes.
+		const hintIps = []
+		if (this.ip) hintIps.push(this.ip)
+		for (const ip of opts.ips || []) {
+			if (ip && !hintIps.includes(ip)) hintIps.push(String(ip).trim())
+		}
+		for (const ip of hintIps) {
+			if (byIp.has(ip)) continue
+			const info = await this.#irobotUdpProbe(ip, 2500)
+			if (info) add(info, 'probe')
+		}
+
+		// 3) UDP broadcast last (collect all replies; always close :5678).
+		if (!opts.skip_udp) {
+			const udpList = await this.#irobotUdpBroadcast(timeoutMs)
+			for (const c of udpList) add(c, 'udp')
+		}
+
+		let candidates = [...byIp.values()]
+		if (candidates.length === 0 && this.mock) {
+			candidates = [{
+				ip: this.ip || '192.168.1.50',
+				hostname: 'Roomba-MOCKBLID000000000000000000',
+				blid: this.blid || 'MOCKBLID000000000000000000',
+				robotname: 'Alfred',
+				sku: 'R960020',
+				ver: '3',
+				source: 'mock',
+			}]
+		}
+
+		return {
+			candidates,
+			robots: candidates,
+			mock: this.mock,
+			sources,
+		}
+	}
+
+	/**
+	 * @param {object} data
+	 * @returns {object|null}
+	 */
+	#normalizeDiscovery(data) {
+		if (!data || !data.ip) return null
+		const hostname = data.hostname || null
+		let blid = data.blid || null
+		if (!blid && hostname && /^(Roomba|iRobot)-/i.test(hostname)) {
+			blid = hostname.split('-').slice(1).join('-')
+		}
+		return {
+			ip: data.ip,
+			hostname,
+			blid,
+			robotname: data.robotname || null,
+			sku: data.sku || null,
+			ver: data.ver || null,
+			mac: data.mac || null,
+			sw: data.sw || null,
+			cap: data.cap || null,
+		}
+	}
+
+	/**
+	 * Unicast or broadcast irobotmcs probe. Always closes the UDP socket.
+	 *
+	 * @param {string} targetIp
+	 * @param {number} timeoutMs
+	 * @returns {Promise<object|null>}
+	 */
+	#irobotUdpProbe(targetIp, timeoutMs = 2500) {
+		const dgram = require('node:dgram')
 		return new Promise((resolve) => {
-			const candidates = []
-			let settled = false
-			const finish = () => {
-				if (!settled) {
-					settled = true
-					resolve({ candidates, mock: false })
+			const server = dgram.createSocket('udp4')
+			let done = false
+			const finish = (value) => {
+				if (done) return
+				done = true
+				clearTimeout(timer)
+				try { server.close() } catch { /* already closed */ }
+				resolve(value)
+			}
+			const timer = setTimeout(() => finish(null), timeoutMs)
+			server.on('error', () => finish(null))
+			server.on('message', (msg) => {
+				try {
+					const parsed = JSON.parse(msg.toString())
+					const host = parsed.hostname || ''
+					if (parsed.ip && (/^Roomba-/i.test(host) || /^iRobot-/i.test(host))) {
+						finish(parsed)
+					}
+				} catch { /* ignore */ }
+			})
+			server.bind(5678, () => {
+				try {
+					if (targetIp === '255.255.255.255') server.setBroadcast(true)
+					const message = Buffer.from('irobotmcs')
+					server.send(message, 0, message.length, 5678, targetIp)
+				} catch {
+					finish(null)
 				}
+			})
+		})
+	}
+
+	/**
+	 * Broadcast irobotmcs and collect every Roomba/iRobot reply until timeout.
+	 *
+	 * @param {number} timeoutMs
+	 * @returns {Promise<object[]>}
+	 */
+	#irobotUdpBroadcast(timeoutMs = 8000) {
+		const dgram = require('node:dgram')
+		return new Promise((resolve) => {
+			const server = dgram.createSocket('udp4')
+			const found = []
+			const seen = new Set()
+			let done = false
+			const finish = () => {
+				if (done) return
+				done = true
+				clearTimeout(timer)
+				try { server.close() } catch { /* already closed */ }
+				resolve(found)
 			}
 			const timer = setTimeout(finish, timeoutMs)
-			try {
-				dorita980.discovery((err, data) => {
-					if (!err && data) {
-						candidates.push(data)
+			server.on('error', () => finish())
+			server.on('message', (msg) => {
+				try {
+					const parsed = JSON.parse(msg.toString())
+					const host = parsed.hostname || ''
+					if (parsed.ip && (/^Roomba-/i.test(host) || /^iRobot-/i.test(host)) && !seen.has(parsed.ip)) {
+						seen.add(parsed.ip)
+						found.push(parsed)
 					}
-					clearTimeout(timer)
+				} catch { /* ignore */ }
+			})
+			server.bind(5678, () => {
+				try {
+					server.setBroadcast(true)
+					const message = Buffer.from('irobotmcs')
+					server.send(message, 0, message.length, 5678, '255.255.255.255')
+				} catch {
 					finish()
-				})
-			} catch (err) {
-				this.lastError = err && err.message ? err.message : String(err)
-				clearTimeout(timer)
-				finish()
+				}
+			})
+		})
+	}
+
+	/**
+	 * @param {string[]|undefined} override
+	 * @returns {string[]} list of "a.b.c" /24 bases
+	 */
+	#discoverSubnets(override) {
+		const bases = new Set()
+		const raw = override && override.length
+			? override
+			: String(this.env.ROOMBA_DISCOVER_SUBNETS || process.env.ROOMBA_DISCOVER_SUBNETS || '')
+				.split(/[,\s]+/)
+				.filter(Boolean)
+		for (const entry of raw) {
+			const m = entry.match(/^(\d+\.\d+\.\d+)(?:\.\d+)?(?:\/\d+)?$/)
+			if (m) bases.add(m[1])
+		}
+		for (const addrs of Object.values(os.networkInterfaces())) {
+			for (const a of addrs || []) {
+				const family = a.family === 'IPv4' || a.family === 4
+				if (!family || a.internal) continue
+				const parts = a.address.split('.').map(Number)
+				// Skip Docker / pod bridges — Roomba lives on the LAN.
+				if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) continue
+				bases.add(`${parts[0]}.${parts[1]}.${parts[2]}`)
 			}
+		}
+		return [...bases]
+	}
+
+	/**
+	 * @param {string[]} bases
+	 * @param {number} concurrency
+	 * @returns {Promise<string[]>}
+	 */
+	async #scanPort8883(bases, concurrency = 40) {
+		const ips = []
+		for (const base of bases) {
+			for (let host = 1; host <= 254; host++) {
+				ips.push(`${base}.${host}`)
+			}
+		}
+		const open = []
+		let i = 0
+		const workers = Array.from({ length: Math.min(concurrency, ips.length) }, async () => {
+			while (i < ips.length) {
+				const ip = ips[i++]
+				if (await this.#tcpOpen(ip, 8883, 250)) open.push(ip)
+			}
+		})
+		await Promise.all(workers)
+		return open
+	}
+
+	/**
+	 * @param {string} host
+	 * @param {number} port
+	 * @param {number} timeoutMs
+	 * @returns {Promise<boolean>}
+	 */
+	#tcpOpen(host, port, timeoutMs) {
+		return new Promise((resolve) => {
+			const socket = net.connect({ host, port }, () => {
+				socket.destroy()
+				resolve(true)
+			})
+			const done = (ok) => {
+				socket.destroy()
+				resolve(ok)
+			}
+			socket.setTimeout(timeoutMs, () => done(false))
+			socket.on('error', () => done(false))
 		})
 	}
 

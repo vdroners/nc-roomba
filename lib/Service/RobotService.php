@@ -287,19 +287,55 @@ class RobotService
 		];
 	}
 
-	/** @return array{ok:bool,robots:list<array<string,mixed>>,error:?string} */
+	/**
+	 * Re-open the bridge MQTT session using DB-stored credentials.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function connectTest(int $robotId): array
+	{
+		$robot = $this->getRobot($robotId) ?? $this->getPrimaryRobot();
+		if ($robot === null) {
+			return ['ok' => false, 'error' => 'robot_not_configured'];
+		}
+		$password = $this->getPlainPassword($robot);
+		if ($robot->getBlid() === '' || $password === '' || $robot->getHost() === '') {
+			return ['ok' => false, 'error' => 'incomplete_credentials'];
+		}
+		$resp = $this->bridge->connect([
+			'blid' => $robot->getBlid(),
+			'password' => $password,
+			'ip' => $robot->getHost(),
+			'name' => $robot->getName(),
+			'robot_id' => (int) $robot->getId(),
+		]);
+		$body = is_array($resp['body'] ?? null) ? $resp['body'] : [];
+		return array_merge($body, [
+			'ok' => $resp['ok'] || !empty($body['connected']) || !empty($body['mock']),
+			'error' => $resp['error'] ?? ($body['error'] ?? null),
+			'robot_id' => (int) $robot->getId(),
+		]);
+	}
+
+	/** @return array{ok:bool,robots:list<array<string,mixed>>,candidates:list<array<string,mixed>>,mock:?bool,sources:?array,error:?string} */
 	public function discover(array $opts = []): array
 	{
 		$resp = $this->bridge->discover($opts);
+		$body = is_array($resp['body'] ?? null) ? $resp['body'] : [];
 		$robots = [];
-		if (is_array($resp['body']['robots'] ?? null)) {
-			$robots = $resp['body']['robots'];
-		} elseif (is_array($resp['body'] ?? null) && array_is_list($resp['body'])) {
-			$robots = $resp['body'];
+		if (is_array($body['robots'] ?? null)) {
+			$robots = $body['robots'];
+		} elseif (is_array($body['candidates'] ?? null)) {
+			$robots = $body['candidates'];
+		} elseif (array_is_list($body)) {
+			$robots = $body;
 		}
 		return [
 			'ok' => $resp['ok'],
 			'robots' => $robots,
+			'candidates' => $robots,
+			'mock' => $body['mock'] ?? null,
+			'sources' => is_array($body['sources'] ?? null) ? $body['sources'] : null,
 			'error' => $resp['error'],
 		];
 	}

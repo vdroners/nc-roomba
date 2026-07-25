@@ -12,28 +12,30 @@ only to Nextcloud.
 
 ## 1. DHCP reservation
 
-1. Find Alfred’s MAC on your router (or from a temporary DHCP lease after joining Wi‑Fi).
+1. Find Alfred’s MAC on your router (or use **Auto discover** in the app — it
+   lists `robotname`, IP, and BLID from a LAN `:8883` scan).
 2. Create a **DHCP reservation** so Alfred always gets the same IPv4 address.
-3. Note that IP — you will enter it during onboarding.
-4. Confirm port **8883/tcp** is reachable from the host running the bridge:
+3. Confirm port **8883/tcp** is reachable from the host running the bridge:
    `nc -zv <alfred-ip> 8883`
 
 Tip: Keep the iRobot cloud Wi‑Fi association from the original phone setup; after
 onboarding we use **local MQTT only** and you should close the iRobot app when
 using NC Roomba (single MQTT connection).
 
-## 2. Hold-HOME onboarding (BLID + password)
+## 2. Auto discover + Hold-HOME onboarding
 
 Alfred must be on the dock / powered, on Wi‑Fi, and **not** connected to the
 iRobot mobile app.
 
-1. In Nextcloud → **Administration → NC Roomba**, enter Alfred’s reserved IP.
+1. In **NC Roomba → Settings** (or **Administration → NC Roomba**), click
+   **Auto discover**. The bridge tries UDP discovery, then TCP-scans
+   `ROOMBA_DISCOVER_SUBNETS` (default `10.0.0.0/24`) for MQTT `:8883` and reads
+   public info (name / BLID). Select **Alfred** when listed.
 2. On Alfred, **press and hold the HOME button** until the robot plays a series
    of tones (dorita980 / get-password window — typically ~2 seconds hold, then
    wait while the bridge fetches credentials).
-3. Click **Onboard (hold HOME)** in the admin form. The bridge calls
-   `getPassword` against the robot, stores BLID + password encrypted
-   (`enc:v1:` + Nextcloud `ICrypto`), and opens the MQTT session.
+3. Click **Onboard (hold HOME)**. The bridge calls `getPassword`, stores BLID +
+   password encrypted (`enc:v1:` + Nextcloud `ICrypto`), and opens the MQTT session.
 4. Run **Connect test**. Success shows connected state; a **conflict** means
    another client (usually the iRobot app) holds the MQTT socket — close it,
    wait ~30s, retry.

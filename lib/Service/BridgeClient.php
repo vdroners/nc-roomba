@@ -96,7 +96,8 @@ class BridgeClient
 	 */
 	public function discover(array $opts = []): array
 	{
-		return $this->request('POST', '/discover', null, $opts);
+		// Subnet TCP scan + public-info probes can exceed the default 30s budget.
+		return $this->request('POST', '/discover', null, $opts, 90);
 	}
 
 	/**
@@ -169,7 +170,7 @@ class BridgeClient
 	 * @param array<string, mixed>|null $jsonBody
 	 * @return array{ok:bool,status:int,body:?array,raw:string,error:?string}
 	 */
-	public function request(string $method, string $path, ?array $query = null, ?array $jsonBody = null): array
+	public function request(string $method, string $path, ?array $query = null, ?array $jsonBody = null, ?int $timeoutSeconds = null): array
 	{
 		$url = $this->getBaseUrl() . $path;
 		if ($query !== null && $query !== []) {
@@ -186,7 +187,7 @@ class BridgeClient
 			CURLOPT_CUSTOMREQUEST => strtoupper($method),
 			CURLOPT_RETURNTRANSFER => true,
 			CURLOPT_CONNECTTIMEOUT => self::CONNECT_TIMEOUT,
-			CURLOPT_TIMEOUT => self::TIMEOUT,
+			CURLOPT_TIMEOUT => $timeoutSeconds ?? self::TIMEOUT,
 			CURLOPT_FOLLOWLOCATION => false,
 		];
 		if ($jsonBody !== null) {
