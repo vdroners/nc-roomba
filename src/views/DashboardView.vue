@@ -1,52 +1,51 @@
 <template>
-	<div class="nc-roomba-view nc-roomba-dashboard">
-		<!-- Zone A: at-a-glance -->
-		<StatusHero :state="store.state" :next-scheduled="store.nextScheduled" />
+	<div class="nc-roomba-view nc-roomba-dashboard nc-roomba-dashboard--grid">
+		<!-- Alert first (full width) when there's something to see -->
+		<ErrorDecoderPanel
+			class="nc-roomba-dashboard__alert"
+			:decoded="store.decodedError"
+			:conflict="store.conflict"
+			@open-drawer="$emit('open-drawer')" />
 
-		<!-- Zone B: controls + live theater (with any active alert folded in) -->
-		<section class="nc-roomba-dashboard__zone">
-			<ErrorDecoderPanel
-				:decoded="store.decodedError"
-				:conflict="store.conflict"
-				@open-drawer="$emit('open-drawer')" />
+		<!-- At-a-glance hero -->
+		<StatusHero class="nc-roomba-dashboard__hero" :state="store.state" :next-scheduled="store.nextScheduled" />
 
-			<div class="nc-roomba-dashboard__split">
-				<section class="nc-roomba-panel" style="margin: 0">
-					<h3>Controls</h3>
-					<ControlPad
-						:disabled="!store.canOperate"
-						:pending="store.actionPending"
-						@action="onAction" />
-				</section>
-
-				<MissionStage
-					:state="store.state"
-					:has-pose="store.hasPose"
-					:fallback-name="fallbackName" />
-			</div>
+		<!-- Controls -->
+		<section class="nc-roomba-panel nc-roomba-dashboard__controls" style="margin: 0">
+			<h3>Controls</h3>
+			<ControlPad
+				:disabled="!store.canOperate"
+				:pending="store.actionPending"
+				@action="onAction" />
 		</section>
 
-		<!-- Zone C: activity + health -->
-		<div class="nc-roomba-dashboard__split nc-roomba-dashboard__review">
-			<MissionTimeline :phases="store.livePhases" title="Current mission" />
+		<!-- Live theater + map (the visual centrepiece) -->
+		<MissionStage
+			class="nc-roomba-dashboard__stage"
+			:state="store.state"
+			:has-pose="store.hasPose"
+			:fallback-name="fallbackName" />
 
-			<section class="nc-roomba-panel" style="margin: 0">
-				<div class="nc-roomba-view__header">
-					<h3>Lifetime</h3>
-					<span class="nc-roomba-muted">{{ achv.unlocked }} / {{ achv.total }} achievements</span>
-				</div>
-				<LifetimeStats
-					:bbrun="store.bbrun"
-					:bbmssn="store.bbmssn"
-					:sku="store.sku"
-					:software-version="store.softwareVersion"
-					:robot-name="name" />
-			</section>
-		</div>
+		<!-- Current-mission timeline -->
+		<MissionTimeline class="nc-roomba-dashboard__timeline" :phases="store.livePhases" title="Current mission" />
 
-		<MaintenanceHints v-if="store.hints && store.hints.length" :hints="store.hints" />
+		<!-- Lifetime + achievements -->
+		<section class="nc-roomba-panel nc-roomba-dashboard__lifetime" style="margin: 0">
+			<div class="nc-roomba-view__header">
+				<h3>Lifetime</h3>
+				<span class="nc-roomba-muted">{{ achv.unlocked }} / {{ achv.total }} achievements</span>
+			</div>
+			<LifetimeStats
+				:bbrun="store.bbrun"
+				:bbmssn="store.bbmssn"
+				:sku="store.sku"
+				:software-version="store.softwareVersion"
+				:robot-name="name" />
+		</section>
 
-		<AlfredPanel v-if="store.alfred && store.alfred.enabled" :config="store.alfred" :robot-name="name" />
+		<MaintenanceHints v-if="store.hints && store.hints.length" class="nc-roomba-dashboard__wide" :hints="store.hints" />
+
+		<AlfredPanel v-if="store.alfred && store.alfred.enabled" class="nc-roomba-dashboard__wide" :config="store.alfred" :robot-name="name" />
 	</div>
 </template>
 

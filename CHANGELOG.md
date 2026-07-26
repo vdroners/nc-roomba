@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-07-26
+
+### Added
+
+- **Live cleaning footprint / floor map.** The bridge now accumulates a
+  mission-scoped pose trail + a 25 cm covered-cell grid (reset on each new
+  mission) and emits `pose_trail` / `covered_cells` in the DTO. The Location map
+  and Dashboard mission stage render a **swept-area footprint** (translucent
+  cells, brighter where the robot dwelled/re-passed — often walls/edges), the
+  crisp path, and the robot marker — built entirely from the robot's live pose.
+- **Derived coverage + duration.** The 960 reports `sqft`/`mssn_m` as 0 live, so
+  the bridge derives `mission_m_est` (from `started_at`) and `sqft_est` (unique
+  swept-cell area); the UI shows them labelled "est." when the robot's own value
+  is absent.
+
+### Fixed
+
+- **Map heading was wrong.** The marker used `rotate(theta)` while the Y axis is
+  flipped; corrected to `rotate(-theta - 90)` so the cone points along travel.
+- **Map position barely moved.** Replaced the fixed `±500 cm` viewBox with one
+  that **auto-fits** the dock + trail + current pose, so real motion fills the
+  frame.
+- **Mission-stage metric labels/values clipped.** `dt` letter-spacing reduced +
+  wrap; `dd` uses a fluid `clamp()` font size and the box clips internally, so
+  long values (now with "est.") scale down instead of overflowing.
+
+### Changed
+
+- **Denser dashboard layout.** On wide screens the dashboard fills the width
+  (container up to 1400px) with a 12-column grid — hero + controls on top, the
+  large mission stage beside a timeline/lifetime rail — instead of a single
+  narrow column with big empty margins. Single column on phones.
+- Location copy is explicit that the 960 doesn't publish a full carpet/room map
+  over the local API (that would need the iRobot cloud) — the footprint is the
+  honest, robot-reported coverage, not a fabricated map.
+
 ## [0.8.0] - 2026-07-26
 
 ### Added

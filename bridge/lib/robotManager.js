@@ -26,6 +26,11 @@ const { WifiHelperClient } = require('./wifiHelperClient')
 
 const BRIDGE_VERSION = require('../package.json').version
 
+/** Pose-trail accumulation (the "cleaned floor" footprint). Pose is in cm. */
+const TRAIL_MAX = 2000 // ring-buffer cap on trail points
+const TRAIL_MIN_MOVE_CM = 5 // decimate: ignore points closer than this
+const CELL_CM = 25 // covered-cell grid size (~robot swath); also the est-area unit
+
 /** Actions the app exposes, mapped to dorita980 local methods (first hit wins). */
 const ACTIONS = {
 	clean: ['clean', 'start'],
@@ -124,6 +129,9 @@ class RobotManager extends EventEmitter {
 		this.lastError = null
 		this.lastCommand = null
 		this.missionStartedAt = null
+		// Mission-scoped pose trail + covered-cell dwell map — reset on new mission.
+		this.poseTrail = []
+		this.coveredCells = new Map() // "gx,gy" -> dwell count
 		this.startedAt = Date.now()
 		this.updatedAt = new Date().toISOString()
 		this.mockTimer = null
@@ -443,6 +451,9 @@ class RobotManager extends EventEmitter {
 			mock: this.mock,
 			updated_at: this.updatedAt,
 			mission_started_at: this.missionStartedAt,
+			pose_trail: this.poseTrail,
+			covered_cells: this.coveredCells,
+			cell_cm: CELL_CM,
 			bridge_version: BRIDGE_VERSION,
 			uptime_s: Math.round((Date.now() - this.startedAt) / 1000),
 			name: this.env.ROBOT_NAME || null,
@@ -1015,10 +1026,42 @@ class RobotManager extends EventEmitter {
 		const mission = this.raw.cleanMissionStatus || {}
 		const running = mission.cycle && mission.cycle !== 'none'
 		if (running && !this.missionStartedAt) {
+			// A new mission began — start a fresh footprint.
 			this.missionStartedAt = new Date().toISOString()
+			this.poseTrail = []
+			this.coveredCells = new Map()
 		} else if (!running) {
 			this.missionStartedAt = null
+			// Keep the last footprint on screen until the next mission starts.
 		}
+		if (running) {
+			this.#appendPose()
+		}
+	}
+
+	/**
+	 * Append the current pose to the mission trail (decimated) and mark its
+	 * covered cell. Reads the same raw shape as stateNormalizer.normalizePose.
+	 */
+	#appendPose() {
+		const pose = this.raw.pose || {}
+		const point = pose.point || {}
+		const x = Number(point.x)
+		const y = Number(point.y)
+		if (!Number.isFinite(x) || !Number.isFinite(y)) {
+			return
+		}
+		const theta = Number(pose.theta)
+		const last = this.poseTrail[this.poseTrail.length - 1]
+		if (last && Math.hypot(x - last.x, y - last.y) < TRAIL_MIN_MOVE_CM) {
+			return // decimate sensor jitter / stationary samples
+		}
+		this.poseTrail.push({ x, y, theta: Number.isFinite(theta) ? theta : null, ts: Date.now() })
+		if (this.poseTrail.length > TRAIL_MAX) {
+			this.poseTrail.shift()
+		}
+		const key = `${Math.round(x / CELL_CM)},${Math.round(y / CELL_CM)}`
+		this.coveredCells.set(key, (this.coveredCells.get(key) || 0) + 1)
 	}
 
 	#publish() {

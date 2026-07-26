@@ -121,7 +121,7 @@ function normalizeCapabilities(raw) {
  * @param {string|null} startedAt tracked mission start, when the bridge saw it begin
  * @returns {{ started_at: string|null, sqft: number|null, mssn_m: number|null, n_mssn: number|null, initiator: string|null, rechrg_m: number|null }}
  */
-function normalizeMission(mission, updatedAt, startedAt) {
+function normalizeMission(mission, updatedAt, startedAt, cellCount = 0, cellCm = 25) {
 	const m = obj(mission)
 	const mssnM = num(m.mssnM)
 	let started = startedAt || null
@@ -133,10 +133,29 @@ function normalizeMission(mission, updatedAt, startedAt) {
 			started = new Date(base - mssnM * 60_000).toISOString()
 		}
 	}
+
+	// The 960 reports mssnM=0 and sqft=0 live, so derive both (labelled "est."
+	// in the UI). Keep the raw fields untouched for when a robot does report.
+	let missionMEst = null
+	const base = started ? Date.parse(started) : NaN
+	const end = Date.parse(updatedAt)
+	if (Number.isFinite(base) && Number.isFinite(end) && end >= base) {
+		missionMEst = Math.round((end - base) / 60_000)
+	}
+	// Area from unique swept cells: cellCount × (cellCm cm)² → sq ft. Cell-count
+	// dedupes the Roomba's constant re-covering, giving an honest "area cleaned".
+	let sqftEst = null
+	if (cellCount > 0) {
+		const sqM = cellCount * (cellCm / 100) ** 2
+		sqftEst = Math.round(sqM * 10.7639)
+	}
+
 	return {
 		started_at: started,
 		sqft: num(m.sqft),
+		sqft_est: sqftEst,
 		mssn_m: mssnM,
+		mission_m_est: missionMEst,
 		n_mssn: num(m.nMssn),
 		initiator: typeof m.initiator === 'string' ? m.initiator : null,
 		rechrg_m: num(m.rechrgM),
@@ -166,6 +185,15 @@ function normalizeState(raw, meta = {}) {
 	const updatedAt = meta.updated_at || new Date().toISOString()
 	const { has_pose: hasPose, pose } = normalizePose(state)
 
+	// Pose trail + covered cells (the accumulated "cleaned floor" footprint).
+	const cellCm = num(meta.cell_cm) ?? 25
+	const trail = Array.isArray(meta.pose_trail) ? meta.pose_trail : []
+	const cells = meta.covered_cells instanceof Map ? meta.covered_cells : new Map()
+	const coveredCells = [...cells.entries()].map(([k, n]) => {
+		const [gx, gy] = k.split(',').map(Number)
+		return { x: gx * cellCm, y: gy * cellCm, n }
+	})
+
 	return {
 		robot_id: num(meta.robot_id) ?? 1,
 		name: meta.name || (typeof state.name === 'string' ? state.name : null),
@@ -184,7 +212,10 @@ function normalizeState(raw, meta = {}) {
 		not_ready: num(mission.notReady) ?? 0,
 		has_pose: hasPose,
 		pose,
-		mission: normalizeMission(mission, updatedAt, meta.mission_started_at),
+		pose_trail: trail.map((p) => ({ x: p.x, y: p.y, theta: p.theta ?? null, ts: p.ts })),
+		covered_cells: coveredCells,
+		cell_cm: cellCm,
+		mission: normalizeMission(mission, updatedAt, meta.mission_started_at, cells.size, cellCm),
 		capabilities: normalizeCapabilities(state),
 		software_version: typeof state.softwareVer === 'string' ? state.softwareVer : null,
 		sku: typeof state.sku === 'string' ? state.sku : null,

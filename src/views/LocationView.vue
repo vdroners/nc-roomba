@@ -13,13 +13,21 @@
 
 		<div v-if="hasPose" class="nc-roomba-panel" data-testid="location-map">
 			<div class="nc-roomba-map" :style="floorplanStyle">
-				<svg class="nc-roomba-map__svg" viewBox="-500 -500 1000 1000" role="img" aria-label="Robot position">
-					<line x1="-500" y1="0" x2="500" y2="0" class="nc-roomba-map__axis" />
-					<line x1="0" y1="-500" x2="0" y2="500" class="nc-roomba-map__axis" />
+				<svg class="nc-roomba-map__svg" :viewBox="viewBox" role="img" aria-label="Cleaning footprint">
+					<!-- Swept-area footprint: one translucent square per covered cell;
+					     opacity ∝ dwell (bright = revisited most — often walls/edges). -->
+					<rect
+						v-for="(cell, i) in coveredCells"
+						:key="i"
+						class="nc-roomba-map__cell"
+						:x="cell.x - cellHalf"
+						:y="-cell.y - cellHalf"
+						:width="cellCm"
+						:height="cellCm"
+						:style="{ opacity: cell.opacity }" />
 					<!-- Dock origin -->
 					<circle class="nc-roomba-map__dock" cx="0" cy="0" r="34" />
 					<text class="nc-roomba-map__dock-label" x="0" y="8" text-anchor="middle">dock</text>
-					<polyline v-if="trailFade" :points="trailFade" class="nc-roomba-map__trail-fade" />
 					<polyline v-if="trailPoints" :points="trailPoints" class="nc-roomba-map__trail" />
 					<g class="nc-roomba-map__robot-g" :transform="markerTransform">
 						<polygon points="0,-78 40,14 -40,14" class="nc-roomba-map__cone" />
@@ -49,6 +57,13 @@
 			<p class="nc-roomba-muted">
 				Coordinates are centimetres from the dock, in the robot's own frame —
 				they do not survive a re-dock, so treat the plot as relative.
+			</p>
+			<p class="nc-roomba-muted">
+				The shaded footprint is the area {{ robotName }} has swept this mission,
+				built from its live pose. Brighter cells are where it dwelled or
+				re-passed — often walls, edges, or obstacles. The 960 does not publish
+				a full carpet/room map over the local API (that needs the iRobot cloud),
+				so this is the honest, robot-reported coverage — not a fabricated map.
 			</p>
 		</div>
 
@@ -80,10 +95,14 @@
 <script>
 import MissionStage from '../components/MissionStage.vue'
 import { useRobotStore } from '../store/robot.js'
-import { lastSeenLabel, phaseLabel } from '../utils/format.js'
-
-/** Robot pose is in cm; clamp to the SVG viewBox so a far room stays on screen. */
-const EXTENT = 480
+import {
+	coveredCellStyle,
+	fitViewBox,
+	formatTrail,
+	lastSeenLabel,
+	markerTransformFor,
+	phaseLabel,
+} from '../utils/format.js'
 
 export default {
 	name: 'LocationView',
@@ -125,44 +144,26 @@ export default {
 			return 'Many 900-series models do not advertise pose over the local MQTT API. The mission stage above still tracks phase, battery, and coverage in real time.'
 		},
 		markerTransform() {
-			const x = clamp(Number(this.pose.x) || 0)
-			// SVG y grows downward; the robot frame grows "up", so flip it.
-			const y = -clamp(Number(this.pose.y) || 0)
-			const theta = Number(this.pose.theta) || 0
-			return `translate(${x} ${y}) rotate(${theta})`
+			return markerTransformFor(this.pose)
+		},
+		trail() {
+			return (this.store.state && this.store.state.pose_trail) || []
 		},
 		trailPoints() {
-			return formatTrail((this.store.state && this.store.state.pose_trail) || [], false)
+			return formatTrail(this.trail)
 		},
-		trailFade() {
-			return formatTrail((this.store.state && this.store.state.pose_trail) || [], true)
+		cellCm() {
+			return Number(this.store.state && this.store.state.cell_cm) || 25
+		},
+		cellHalf() {
+			return this.cellCm / 2
+		},
+		coveredCells() {
+			return coveredCellStyle((this.store.state && this.store.state.covered_cells) || [])
+		},
+		viewBox() {
+			return fitViewBox(this.trail, this.pose)
 		},
 	},
-}
-
-/**
- * @param {number} value centimetres from the dock
- * @returns {number} value clamped to the drawable extent
- */
-function clamp(value) {
-	return Math.max(-EXTENT, Math.min(EXTENT, value))
-}
-
-/**
- * @param {Array<{x:number,y:number}>} trail
- * @param {boolean} fade
- * @returns {string}
- */
-function formatTrail(trail, fade) {
-	if (!Array.isArray(trail) || trail.length < 2) {
-		return ''
-	}
-	const points = fade ? trail.filter((_, i) => i % 2 === 0) : trail
-	if (points.length < 2) {
-		return ''
-	}
-	return points
-		.map((point) => `${clamp(Number(point.x) || 0)},${-clamp(Number(point.y) || 0)}`)
-		.join(' ')
 }
 </script>

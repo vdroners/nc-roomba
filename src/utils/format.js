@@ -270,3 +270,90 @@ export function timeLabel(ts) {
 
 /** @type {string[]} index 0 = Sunday, matching the dorita980 setWeek shape. */
 export const WEEK_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
+/* ─── Pose-map helpers (shared by MissionStage + LocationView) ──────────
+ * Pose is in cm, dock-relative. World Y grows "up"; SVG Y grows down, so every
+ * point is drawn at −y. The viewBox auto-fits the data so real motion reads.
+ */
+
+/**
+ * @param {Array<{x:number,y:number}>} trail pose points (cm)
+ * @returns {string} SVG polyline points, or '' when too short to draw
+ */
+export function formatTrail(trail) {
+	if (!Array.isArray(trail) || trail.length < 2) {
+		return ''
+	}
+	return trail.map((p) => `${Number(p.x) || 0},${-(Number(p.y) || 0)}`).join(' ')
+}
+
+/**
+ * Square viewBox bounding the dock (0,0) + trail + current pose, padded, so a
+ * live path fills the frame instead of drifting in a fixed box.
+ *
+ * @param {Array<{x:number,y:number}>} trail
+ * @param {{x:number,y:number}} [pose]
+ * @param {number} [pad] cm of breathing room
+ * @returns {string} "minX minY w h" in screen coords (Y already flipped)
+ */
+export function fitViewBox(trail, pose, pad = 80) {
+	const pts = [{ x: 0, y: 0 }]
+	if (Array.isArray(trail)) {
+		for (const p of trail) {
+			pts.push({ x: Number(p.x), y: Number(p.y) })
+		}
+	}
+	const px = Number(pose && pose.x)
+	const py = Number(pose && pose.y)
+	if (Number.isFinite(px) && Number.isFinite(py)) {
+		pts.push({ x: px, y: py })
+	}
+	let minX = Infinity; let maxX = -Infinity; let minY = Infinity; let maxY = -Infinity
+	for (const p of pts) {
+		if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+			continue
+		}
+		minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x)
+		minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y)
+	}
+	if (!Number.isFinite(minX)) {
+		return '-500 -500 1000 1000'
+	}
+	const cx = (minX + maxX) / 2
+	const cy = (minY + maxY) / 2
+	const side = Math.max((maxX - minX) + pad * 2, (maxY - minY) + pad * 2, 300)
+	return `${cx - side / 2} ${-cy - side / 2} ${side} ${side}`
+}
+
+/**
+ * Covered-cell footprint with dwell-driven opacity (bright = revisited most).
+ *
+ * @param {Array<{x:number,y:number,n:number}>} cells
+ * @returns {Array<{x:number,y:number,opacity:string}>}
+ */
+export function coveredCellStyle(cells) {
+	if (!Array.isArray(cells) || !cells.length) {
+		return []
+	}
+	const maxN = cells.reduce((mx, c) => Math.max(mx, Number(c.n) || 1), 1)
+	return cells.map((c) => ({
+		x: Number(c.x) || 0,
+		y: Number(c.y) || 0,
+		opacity: (0.18 + 0.42 * ((Number(c.n) || 1) / maxN)).toFixed(3),
+	}))
+}
+
+/**
+ * Heading transform for the robot marker. SVG Y is flipped so a CCW robot angle
+ * renders negated; the marker art points up (−Y) at 0 and robot theta 0 ≈ +X,
+ * hence −90 to align the cone with travel.
+ *
+ * @param {{x:number,y:number,theta:number}} pose
+ * @returns {string} SVG transform
+ */
+export function markerTransformFor(pose) {
+	const x = Number(pose && pose.x) || 0
+	const y = -(Number(pose && pose.y) || 0)
+	const theta = -(Number(pose && pose.theta) || 0) - 90
+	return `translate(${x} ${y}) rotate(${theta})`
+}

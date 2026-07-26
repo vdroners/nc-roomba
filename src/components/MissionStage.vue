@@ -41,9 +41,18 @@
 			</dl>
 
 			<div v-if="showMiniMap" class="nc-roomba-stage__mini-map" data-testid="stage-mini-map">
-				<svg class="nc-roomba-map__svg" viewBox="-500 -500 1000 1000" role="img" aria-label="Live pose inset">
+				<svg class="nc-roomba-map__svg" :viewBox="viewBox" role="img" aria-label="Live cleaning footprint">
+					<!-- swept-area footprint: one translucent square per covered cell -->
+					<rect
+						v-for="(cell, i) in coveredCells"
+						:key="i"
+						class="nc-roomba-map__cell"
+						:x="cell.x - cellHalf"
+						:y="-cell.y - cellHalf"
+						:width="cellCm"
+						:height="cellCm"
+						:style="{ opacity: cell.opacity }" />
 					<circle class="nc-roomba-map__dock" cx="0" cy="0" r="28" />
-					<polyline v-if="trailFade" :points="trailFade" class="nc-roomba-map__trail-fade" />
 					<polyline v-if="trailPoints" :points="trailPoints" class="nc-roomba-map__trail" />
 					<g class="nc-roomba-map__robot-g" :transform="markerTransform">
 						<polygon points="0,-70 36,10 -36,10" class="nc-roomba-map__cone" />
@@ -59,10 +68,16 @@
 </template>
 
 <script>
-import { batteryLabel, durationLabel, phaseLabel } from '../utils/format.js'
+import {
+	batteryLabel,
+	coveredCellStyle,
+	durationLabel,
+	fitViewBox,
+	formatTrail,
+	markerTransformFor,
+	phaseLabel,
+} from '../utils/format.js'
 import { stageMood } from '../utils/stageMood.js'
-
-const EXTENT = 480
 
 /**
  * Live mission theater for the Dashboard split. Phase-driven motion only —
@@ -111,11 +126,20 @@ export default {
 		},
 		durationText() {
 			const m = Number(this.mission.mssn_m) || 0
-			return m > 0 ? durationLabel(m * 60) : '—'
+			if (m > 0) {
+				return durationLabel(m * 60)
+			}
+			// The 960 reports 0 live; fall back to the bridge-derived estimate.
+			const est = Number(this.mission.mission_m_est) || 0
+			return est > 0 ? `${durationLabel(est * 60)} est.` : '—'
 		},
 		sqftText() {
 			const sqft = Number(this.mission.sqft) || 0
-			return sqft > 0 ? `${sqft.toLocaleString()} sq ft` : '—'
+			if (sqft > 0) {
+				return `${sqft.toLocaleString()} sq ft`
+			}
+			const est = Number(this.mission.sqft_est) || 0
+			return est > 0 ? `${est.toLocaleString()} sq ft est.` : '—'
 		},
 		batteryText() {
 			const pct = this.state ? this.state.battery_pct : null
@@ -150,16 +174,26 @@ export default {
 				&& this.pose.x !== undefined
 		},
 		markerTransform() {
-			const x = clamp(Number(this.pose.x) || 0)
-			const y = -clamp(Number(this.pose.y) || 0)
-			const theta = Number(this.pose.theta) || 0
-			return `translate(${x} ${y}) rotate(${theta})`
+			return markerTransformFor(this.pose)
+		},
+		trail() {
+			return (this.state && this.state.pose_trail) || []
 		},
 		trailPoints() {
-			return formatTrail((this.state && this.state.pose_trail) || [], false)
+			return formatTrail(this.trail)
 		},
-		trailFade() {
-			return formatTrail((this.state && this.state.pose_trail) || [], true)
+		cellCm() {
+			return Number(this.state && this.state.cell_cm) || 25
+		},
+		cellHalf() {
+			return this.cellCm / 2
+		},
+		coveredCells() {
+			return coveredCellStyle((this.state && this.state.covered_cells) || [])
+		},
+		/** Auto-fit the viewBox to dock + trail + current pose so motion reads. */
+		viewBox() {
+			return fitViewBox(this.trail, this.pose)
 		},
 		hint() {
 			if (!this.state) {
@@ -185,29 +219,4 @@ export default {
 	},
 }
 
-/**
- * @param {number} value
- * @returns {number}
- */
-function clamp(value) {
-	return Math.max(-EXTENT, Math.min(EXTENT, value))
-}
-
-/**
- * @param {Array<{x:number,y:number}>} trail
- * @param {boolean} fade use every other point for a soft underlay
- * @returns {string}
- */
-function formatTrail(trail, fade) {
-	if (!Array.isArray(trail) || trail.length < 2) {
-		return ''
-	}
-	const points = fade ? trail.filter((_, i) => i % 2 === 0) : trail
-	if (points.length < 2) {
-		return ''
-	}
-	return points
-		.map((point) => `${clamp(Number(point.x) || 0)},${-clamp(Number(point.y) || 0)}`)
-		.join(' ')
-}
 </script>

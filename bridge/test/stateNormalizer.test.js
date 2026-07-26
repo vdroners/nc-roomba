@@ -188,3 +188,32 @@ test('isStale grades the sample age and distrusts a missing timestamp', () => {
 	assert.equal(isStale({}, 30_000, now), true)
 	assert.equal(isStale(null, 30_000, now), true)
 })
+
+test('normalizeState emits the accumulated pose trail + covered cells', () => {
+	const trail = [
+		{ x: 0, y: 0, theta: 90, ts: 1 },
+		{ x: 25, y: 0, theta: 90, ts: 2 },
+		{ x: 50, y: 0, theta: 0, ts: 3 },
+	]
+	const cells = new Map([['0,0', 4], ['1,0', 2], ['2,0', 1]])
+	const dto = normalizeState(raw960(), { pose_trail: trail, covered_cells: cells, cell_cm: 25 })
+	assert.equal(dto.pose_trail.length, 3)
+	assert.deepEqual(dto.pose_trail[1], { x: 25, y: 0, theta: 90, ts: 2 })
+	assert.equal(dto.covered_cells.length, 3)
+	// cell "1,0" -> centre (25,0) in cm with dwell 2
+	const c = dto.covered_cells.find((v) => v.x === 25 && v.y === 0)
+	assert.equal(c.n, 2)
+})
+
+test('normalizeMission derives duration + area when the robot reports 0', () => {
+	// 960 live: mssnM/sqft are 0 but started_at + swept cells exist.
+	const started = '2026-07-26T18:00:00.000Z'
+	const updated = '2026-07-26T18:09:00.000Z' // 9 minutes later
+	const m = { cycle: 'clean', phase: 'run', mssnM: 0, sqft: 0 }
+	// 40 cells * (0.25 m)^2 = 2.5 m^2 -> ~26.9 sq ft
+	const dto = normalizeMission(m, updated, started, 40, 25)
+	assert.equal(dto.mssn_m, 0) // raw untouched
+	assert.equal(dto.sqft, 0) // raw untouched
+	assert.equal(dto.mission_m_est, 9)
+	assert.equal(dto.sqft_est, 27)
+})
