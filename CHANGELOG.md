@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-07-26
+
+### Fixed
+
+- **Cleaning preferences didn't reflect the robot's current settings** and
+  toggling a radio showed no selection. The carpet-boost / cleaning-passes radio
+  groups were bound with `:checked`, but `NcCheckboxRadioSwitch` (v8) derives a
+  radio's checked state from `model-value === value` when a `value` is set,
+  ignoring `checked`. Switched the two radio groups to
+  `:model-value` / `@update:model-value`; the plain edge-clean / always-finish
+  switches (no `value`) correctly keep `:checked`.
+
 ## [0.7.1] - 2026-07-26
 
 ### Changed

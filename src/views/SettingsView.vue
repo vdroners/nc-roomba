@@ -18,15 +18,17 @@
 			<template v-else>
 				<fieldset class="nc-roomba-fieldset">
 					<legend>Carpet boost</legend>
+					<!-- Radio groups derive "checked" from model-value === value, so the
+					     current selection must be bound via :model-value, not :checked. -->
 					<NcCheckboxRadioSwitch
 						v-for="option in carpetOptions"
 						:key="option.value"
-						:checked="prefs.carpet_boost === option.value"
+						:model-value="prefs.carpet_boost"
 						:value="option.value"
 						:disabled="locked"
 						name="carpet_boost"
 						type="radio"
-						@update:checked="prefs.carpet_boost = option.value">
+						@update:model-value="prefs.carpet_boost = $event">
 						{{ option.label }}
 					</NcCheckboxRadioSwitch>
 				</fieldset>
@@ -36,12 +38,12 @@
 					<NcCheckboxRadioSwitch
 						v-for="option in passOptions"
 						:key="option.value"
-						:checked="prefs.cleaning_passes === option.value"
+						:model-value="prefs.cleaning_passes"
 						:value="option.value"
 						:disabled="locked"
 						name="cleaning_passes"
 						type="radio"
-						@update:checked="prefs.cleaning_passes = option.value">
+						@update:model-value="prefs.cleaning_passes = $event">
 						{{ option.label }}
 					</NcCheckboxRadioSwitch>
 				</fieldset>
