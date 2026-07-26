@@ -76,6 +76,16 @@ class SettingsController extends Controller
 		], $resp['ok'] ? Http::STATUS_OK : Http::STATUS_BAD_GATEWAY);
 	}
 
+	/** Recent `[roomba]` alerts the OpenClaw monitor mirrored (empty when off). */
+	#[NoAdminRequired]
+	public function alfredAlerts(): JSONResponse
+	{
+		return new JSONResponse([
+			'ok' => true,
+			'alerts' => $this->robots->getAlfredAlerts(8),
+		]);
+	}
+
 	#[NoAdminRequired]
 	public function setPreferences(int $id): JSONResponse
 	{
@@ -120,6 +130,9 @@ class SettingsController extends Controller
 				'timezone' => (string) ($params['home_timezone'] ?? 'America/Los_Angeles'),
 				'country' => (string) ($params['home_country'] ?? 'US'),
 			]);
+		}
+		if (isset($params['alfred']) && is_array($params['alfred'])) {
+			$this->robots->setAlfredConfig($params['alfred']);
 		}
 		if (isset($params['blid'], $params['host'])) {
 			$this->robots->upsertRobot([

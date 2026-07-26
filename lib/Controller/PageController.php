@@ -50,6 +50,7 @@ class PageController extends Controller
 			'is_admin' => $this->permissions->isAdmin(),
 			'robot' => $primary?->jsonSerialize(),
 			'allowed_actions' => RobotService::ALLOWED_ACTIONS,
+			'alfred' => $this->robots->getAlfredConfig(),
 		];
 
 		return new TemplateResponse(Application::APP_ID, 'main', [

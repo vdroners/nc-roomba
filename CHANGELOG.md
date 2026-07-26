@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-07-26
+
+### Added
+
+- **OpenClaw "Alfred" integration (optional, off by default).** Two-way:
+  - Alfred (the household/ops agent) can drive the robot from Nextcloud Talk —
+    `@alfred roomba status | clean | spot | pause | resume | dock | find | stop`
+    — via a new OpenClaw `roomba` skill (SKILL.md + `roomba-dispatch-exec.sh`,
+    `roomba-talk-fast-path.sh`, `roomba-monitor.sh`, `load-roomba-env.sh`).
+    Commands route through the app's PHP API as the `alfred` operator, so the
+    operator ACL and command-audit log govern them (no bridge bypass).
+  - A `roomba-monitor` posts `[roomba]` mission/bin alerts to the family Talk
+    room and appends them to a rolling tail.
+  - **In-app surface:** a Dashboard **"Ask Alfred"** card (`AlfredPanel.vue`)
+    that links to the Talk room, shows example commands, and mirrors the recent
+    alerts. Gated behind a new **Admin → Alfred assistant** toggle
+    (`alfred_enabled` / `alfred_talk_room` appconfig); a read-only
+    `/api/alfred/alerts` endpoint feeds the mirror.
+  - Everything is off unless both `ROOMBA_ENABLED=1` (OpenClaw) and
+    `alfred_enabled` (app) are set. The robot and its "Alfred" name now share
+    one assistant identity.
+
 ## [0.7.3] - 2026-07-26
 
 ### Fixed

@@ -67,6 +67,64 @@ class RobotService
 		$this->config->setAppValue(Application::APP_ID, 'operator_group', trim($group));
 	}
 
+	/**
+	 * Optional OpenClaw "Alfred" assistant integration. Off by default; when on,
+	 * the Dashboard shows a card linking to the Talk room and mirrors recent
+	 * `[roomba]` alerts the OpenClaw monitor writes.
+	 *
+	 * @return array{enabled:bool,talk_room:string,alert_log:string}
+	 */
+	public function getAlfredConfig(): array
+	{
+		return [
+			'enabled' => $this->config->getAppValue(Application::APP_ID, 'alfred_enabled', 'no') === 'yes',
+			'talk_room' => trim($this->config->getAppValue(Application::APP_ID, 'alfred_talk_room', '')),
+			'alert_log' => trim($this->config->getAppValue(Application::APP_ID, 'alfred_alert_log', '')),
+		];
+	}
+
+	/**
+	 * @param array{enabled?:bool|string,talk_room?:string,alert_log?:string} $cfg
+	 */
+	public function setAlfredConfig(array $cfg): void
+	{
+		if (array_key_exists('enabled', $cfg)) {
+			$on = $cfg['enabled'] === true || $cfg['enabled'] === 'yes' || $cfg['enabled'] === '1' || $cfg['enabled'] === 1;
+			$this->config->setAppValue(Application::APP_ID, 'alfred_enabled', $on ? 'yes' : 'no');
+		}
+		if (array_key_exists('talk_room', $cfg)) {
+			$this->config->setAppValue(Application::APP_ID, 'alfred_talk_room', trim((string) $cfg['talk_room']));
+		}
+		if (array_key_exists('alert_log', $cfg)) {
+			$this->config->setAppValue(Application::APP_ID, 'alfred_alert_log', trim((string) $cfg['alert_log']));
+		}
+	}
+
+	/**
+	 * Read the last few `[roomba]` alerts the OpenClaw monitor appended to its
+	 * JSONL tail (best-effort; empty when disabled or the file is absent).
+	 *
+	 * @param int $limit
+	 * @return array<int,array{ts:string,text:string}>
+	 */
+	public function getAlfredAlerts(int $limit = 8): array
+	{
+		$cfg = $this->getAlfredConfig();
+		if (!$cfg['enabled'] || $cfg['alert_log'] === '' || !is_readable($cfg['alert_log'])) {
+			return [];
+		}
+		$lines = @file($cfg['alert_log'], FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+		$lines = array_slice($lines, -max(1, $limit));
+		$out = [];
+		foreach (array_reverse($lines) as $line) {
+			$row = json_decode($line, true);
+			if (is_array($row) && isset($row['text'])) {
+				$out[] = ['ts' => (string) ($row['ts'] ?? ''), 'text' => (string) $row['text']];
+			}
+		}
+		return $out;
+	}
+
 	/** @return Robot[] */
 	public function listRobots(): array
 	{
@@ -589,6 +647,7 @@ class RobotService
 			'retention_days' => $this->getRetentionDays(),
 			'robot' => $robot,
 			'home_wifi' => $this->getHomeWifiPrefs(),
+			'alfred' => $this->getAlfredConfig(),
 		];
 	}
 }

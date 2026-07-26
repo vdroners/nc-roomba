@@ -45,10 +45,13 @@
 		</div>
 
 		<MaintenanceHints v-if="store.hints && store.hints.length" :hints="store.hints" />
+
+		<AlfredPanel v-if="store.alfred && store.alfred.enabled" :config="store.alfred" :robot-name="name" />
 	</div>
 </template>
 
 <script>
+import AlfredPanel from '../components/AlfredPanel.vue'
 import ControlPad from '../components/ControlPad.vue'
 import ErrorDecoderPanel from '../components/ErrorDecoderPanel.vue'
 import LifetimeStats from '../components/LifetimeStats.vue'
@@ -63,6 +66,7 @@ export default {
 	name: 'DashboardView',
 
 	components: {
+		AlfredPanel,
 		ControlPad,
 		ErrorDecoderPanel,
 		LifetimeStats,

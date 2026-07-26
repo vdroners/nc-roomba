@@ -20,6 +20,7 @@ return [
 		['name' => 'settings#setSchedule', 'url' => '/api/robots/{id}/schedule', 'verb' => 'PUT', 'requirements' => ['id' => '\d+']],
 		['name' => 'settings#getPreferences', 'url' => '/api/robots/{id}/preferences', 'verb' => 'GET', 'requirements' => ['id' => '\d+']],
 		['name' => 'settings#setPreferences', 'url' => '/api/robots/{id}/preferences', 'verb' => 'PUT', 'requirements' => ['id' => '\d+']],
+		['name' => 'settings#alfredAlerts', 'url' => '/api/alfred/alerts', 'verb' => 'GET'],
 		['name' => 'settings#adminGet', 'url' => '/api/admin/settings', 'verb' => 'GET'],
 		['name' => 'settings#adminSave', 'url' => '/api/admin/settings', 'verb' => 'PUT'],
 		['name' => 'settings#onboard', 'url' => '/api/admin/onboard', 'verb' => 'POST'],

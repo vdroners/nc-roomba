@@ -101,6 +101,16 @@ export async function getPreferences(robotId = DEFAULT_ROBOT_ID) {
 }
 
 /**
+ * Recent `[roomba]` alerts the OpenClaw "Alfred" monitor mirrored.
+ *
+ * @returns {Promise<Array<{ts:string,text:string}>>}
+ */
+export async function getAlfredAlerts() {
+	const { data } = await axios.get(`${base()}/api/alfred/alerts`)
+	return data.alerts || []
+}
+
+/**
  * @param {object} preferences preference patch
  * @param {number} [robotId]
  * @returns {Promise<object>} preferences after the write

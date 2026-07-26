@@ -105,6 +105,28 @@
 			<p v-if="retention" class="nc-roomba-muted">{{ retention }}</p>
 		</fieldset>
 
+		<fieldset class="nc-roomba-fieldset">
+			<legend>Alfred assistant (OpenClaw)</legend>
+			<p class="nc-roomba-muted">
+				Optional. When enabled, the Dashboard shows an “Ask Alfred” card that links to
+				the Talk room and mirrors recent <code>[roomba]</code> alerts. Alfred controls the
+				robot from Talk as the <code>alfred</code> operator (see the roomba OpenClaw skill).
+			</p>
+			<label class="nc-roomba-admin__check">
+				<input v-model="alfred.enabled" type="checkbox">
+				Enable the Alfred assistant surface
+			</label>
+			<label>
+				Talk room token
+				<input v-model="alfred.talk_room" type="text" placeholder="9x4f25n3 (family room)">
+			</label>
+			<div class="nc-roomba-actions">
+				<NcButton type="primary" :disabled="!!busy" @click="save">
+					{{ busy === 'save' ? 'Saving…' : 'Save Alfred settings' }}
+				</NcButton>
+			</div>
+		</fieldset>
+
 		<NcNoteCard v-if="status" :type="statusType">{{ status }}</NcNoteCard>
 	</div>
 </template>
@@ -155,6 +177,10 @@ export default {
 			candidates: [],
 			retention: '',
 			homeWifi: home,
+			alfred: {
+				enabled: Boolean((this.config.alfred || {}).enabled),
+				talk_room: (this.config.alfred || {}).talk_room || '',
+			},
 			cfg: {
 				name: robot.name || 'Roomba',
 				host: robot.host || '',
@@ -207,6 +233,12 @@ export default {
 			this.cfg.operator_group = settings.operator_group || this.cfg.operator_group
 			this.cfg.retention_days = settings.retention_days ?? this.cfg.retention_days
 			this.homeWifi = settings.home_wifi || this.homeWifi
+			if (settings.alfred) {
+				this.alfred = {
+					enabled: Boolean(settings.alfred.enabled),
+					talk_room: settings.alfred.talk_room || '',
+				}
+			}
 		},
 
 		/**
@@ -246,6 +278,10 @@ export default {
 						ssid: this.homeWifi.ssid,
 						timezone: this.homeWifi.timezone,
 						country: this.homeWifi.country,
+					},
+					alfred: {
+						enabled: this.alfred.enabled,
+						talk_room: this.alfred.talk_room,
 					},
 				}
 				if (this.cfg.password) {
