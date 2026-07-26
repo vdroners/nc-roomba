@@ -151,7 +151,12 @@ export default {
 		'store.preferences': {
 			deep: true,
 			handler(preferences) {
-				this.prefs = editableCopy(preferences)
+				// Only adopt the robot's values when the user has no unsaved edits.
+				// Otherwise a routine live-state poll would overwrite the pending
+				// selection (the "it snaps back to auto" bug) before Save.
+				if (!this.prefsDirty) {
+					this.prefs = editableCopy(preferences)
+				}
 			},
 		},
 	},

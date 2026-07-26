@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.3] - 2026-07-26
+
+### Fixed
+
+- **Cleaning-preference changes snapped back to Auto and didn't stick.** Two
+  causes: (1) `SettingsController::setPreferences` returned the robot's confirmed
+  block under a `body` wrapper while the client (and `getPreferences`) expected
+  it under `preferences`, so the save response deserialized to defaults; and
+  (2) the Settings view's watcher re-applied `store.preferences` on every live
+  poll, overwriting an unsaved selection before the operator could Save. The
+  controller now returns the same `preferences` shape as `getPreferences`, and
+  the watcher only adopts robot values when there are no unsaved edits. (The
+  write always did reach the robot — it just takes a second to echo back.)
+
 ## [0.7.2] - 2026-07-26
 
 ### Fixed

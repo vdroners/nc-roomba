@@ -83,9 +83,11 @@ class SettingsController extends Controller
 		$params = $this->request->getParams();
 		$prefs = is_array($params['preferences'] ?? null) ? $params['preferences'] : $params;
 		$resp = $this->bridge->setPreferences(is_array($prefs) ? $prefs : [], $id);
+		// Return the normalized preference block (same shape as getPreferences) so
+		// the client can apply the robot's confirmed state directly.
 		return new JSONResponse([
 			'ok' => $resp['ok'],
-			'body' => $resp['body'],
+			'preferences' => $resp['body']['preferences'] ?? $resp['body'],
 			'error' => $resp['error'],
 		], $resp['ok'] ? Http::STATUS_OK : Http::STATUS_BAD_GATEWAY);
 	}
