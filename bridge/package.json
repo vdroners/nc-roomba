@@ -1,6 +1,6 @@
 {
   "name": "nc-roomba-bridge",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Local MQTT bridge for NC Roomba (dorita980)",
   "main": "index.js",

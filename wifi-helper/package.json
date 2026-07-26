@@ -1,6 +1,6 @@
 {
   "name": "nc-roomba-wifi-helper",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Host Wi-Fi Soft-AP helper for NC Roomba factory provisioning",
   "main": "index.js",

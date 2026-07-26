@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-07-26
+
+### Changed
+
+- Visual polish on the 0.7.0 revamp: the battery ring now shows the percentage
+  in its centre (a ⚡ while calibrating); the status pill's dot gently pulses
+  while cleaning; pill/stage state colours fully use the shared tokens; and the
+  dashboard's remaining ad-hoc corner radii were migrated to the radius scale.
+- Added a consistent keyboard **focus-visible** ring to the app's custom
+  interactive surfaces (history rows, achievement tiles, chip buttons).
+
 ## [0.7.0] - 2026-07-26
 
 ### Added

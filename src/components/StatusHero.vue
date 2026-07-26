@@ -12,7 +12,7 @@
 		<div class="nc-roomba-hero__facts">
 			<!-- Battery ring -->
 			<div class="nc-roomba-hero__fact nc-roomba-hero__fact--gauge">
-				<svg class="nc-roomba-ring" :class="`is-${batteryLevel(battery, phase)}`" viewBox="0 0 40 40" aria-hidden="true">
+				<svg class="nc-roomba-ring" :class="`is-${batteryLevel(battery, phase)}`" viewBox="0 0 40 40" :aria-label="`Battery ${batteryLabel(battery, phase)}`" role="img">
 					<circle class="nc-roomba-ring__track" cx="20" cy="20" r="16" />
 					<circle
 						class="nc-roomba-ring__value"
@@ -22,6 +22,7 @@
 						:stroke-dasharray="ringCirc"
 						:stroke-dashoffset="ringOffset"
 						transform="rotate(-90 20 20)" />
+					<text class="nc-roomba-ring__pct" x="20" y="20" dominant-baseline="central" text-anchor="middle">{{ ringPctLabel }}</text>
 				</svg>
 				<div class="nc-roomba-hero__gaugetext">
 					<dt>Battery</dt>
@@ -126,6 +127,17 @@ export default {
 		},
 		ringCirc() {
 			return RING_CIRC.toFixed(2)
+		},
+		/** Compact label for the ring centre: number only, or ⚡ while calibrating. */
+		ringPctLabel() {
+			const pct = Number(this.battery)
+			if (!Number.isFinite(pct)) {
+				return '—'
+			}
+			if (pct === 0 && this.phase === 'charge') {
+				return '⚡'
+			}
+			return `${Math.round(pct)}`
 		},
 		/** Dash offset draws the arc for the current battery %. Charging 0% shows a token 6%. */
 		ringOffset() {
