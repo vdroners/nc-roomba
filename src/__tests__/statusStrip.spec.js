@@ -4,6 +4,7 @@ import {
 	ageSeconds,
 	batteryClass,
 	batteryLabel,
+	batteryLevel,
 	binClass,
 	binLabel,
 	durationLabel,
@@ -11,6 +12,7 @@ import {
 	phaseLabel,
 	rssiClass,
 	rssiLabel,
+	signalBars,
 	timestampLabel,
 } from '@/utils/format.js'
 
@@ -56,6 +58,24 @@ describe('status strip labels', () => {
 		expect(rssiClass(-52)).toBe('ok')
 		expect(rssiClass(-72)).toBe('warn')
 		expect(rssiClass(-82)).toBe('danger')
+	})
+
+	it('buckets Wi-Fi into 0-4 signal bars', () => {
+		expect(signalBars(-50)).toBe(4)
+		expect(signalBars(-60)).toBe(3)
+		expect(signalBars(-70)).toBe(2)
+		expect(signalBars(-90)).toBe(1)
+		expect(signalBars(null)).toBe(0)
+		expect(signalBars(undefined)).toBe(0)
+	})
+
+	it('buckets the battery ring level (charging 0% is neutral)', () => {
+		expect(batteryLevel(80)).toBe('ok')
+		expect(batteryLevel(25)).toBe('warn')
+		expect(batteryLevel(8)).toBe('danger')
+		expect(batteryLevel(0, 'charge')).toBe('charge')
+		expect(batteryLevel(0, 'stop')).toBe('danger')
+		expect(batteryLevel(null)).toBe('unknown')
 	})
 
 	it('combines phase and cycle into one label', () => {

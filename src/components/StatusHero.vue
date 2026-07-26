@@ -9,24 +9,53 @@
 			<p class="nc-roomba-hero__sub">{{ status.detail }}</p>
 		</div>
 
-		<dl class="nc-roomba-hero__facts">
-			<div class="nc-roomba-hero__fact">
-				<dt>Battery</dt>
-				<dd :class="batteryClass(battery, phase)">{{ batteryLabel(battery, phase) }}</dd>
+		<div class="nc-roomba-hero__facts">
+			<!-- Battery ring -->
+			<div class="nc-roomba-hero__fact nc-roomba-hero__fact--gauge">
+				<svg class="nc-roomba-ring" :class="`is-${batteryLevel(battery, phase)}`" viewBox="0 0 40 40" aria-hidden="true">
+					<circle class="nc-roomba-ring__track" cx="20" cy="20" r="16" />
+					<circle
+						class="nc-roomba-ring__value"
+						cx="20"
+						cy="20"
+						r="16"
+						:stroke-dasharray="ringCirc"
+						:stroke-dashoffset="ringOffset"
+						transform="rotate(-90 20 20)" />
+				</svg>
+				<div class="nc-roomba-hero__gaugetext">
+					<dt>Battery</dt>
+					<dd :class="batteryClass(battery, phase)">{{ batteryLabel(battery, phase) }}</dd>
+				</div>
 			</div>
-			<div class="nc-roomba-hero__fact">
-				<dt>Bin</dt>
-				<dd :class="binClass(bin)">{{ binLabel(bin) }}</dd>
+
+			<!-- Wi-Fi signal bars -->
+			<div class="nc-roomba-hero__fact nc-roomba-hero__fact--gauge">
+				<span class="nc-roomba-bars" :class="rssiClass(rssi)" :title="rssiShort" aria-hidden="true">
+					<i v-for="n in 4" :key="n" :class="{ on: n <= bars }" />
+				</span>
+				<div class="nc-roomba-hero__gaugetext">
+					<dt>Wi-Fi</dt>
+					<dd :class="rssiClass(rssi)">{{ rssiShort }}</dd>
+				</div>
 			</div>
-			<div class="nc-roomba-hero__fact">
-				<dt>Wi-Fi</dt>
-				<dd :class="rssiClass(rssi)">{{ rssiShort }}</dd>
+
+			<!-- Bin fill glyph -->
+			<div class="nc-roomba-hero__fact nc-roomba-hero__fact--gauge">
+				<span class="nc-roomba-bin" :class="binClass(bin)" aria-hidden="true">
+					<i class="nc-roomba-bin__fill" :class="`is-${bin}`" />
+				</span>
+				<div class="nc-roomba-hero__gaugetext">
+					<dt>Bin</dt>
+					<dd :class="binClass(bin)">{{ binLabel(bin) }}</dd>
+				</div>
 			</div>
+
 			<div class="nc-roomba-hero__fact">
 				<dt>Next clean</dt>
 				<dd>{{ nextCleanText }}</dd>
 			</div>
-		</dl>
+		</div>
 	</div>
 </template>
 
@@ -34,10 +63,15 @@
 import {
 	batteryClass,
 	batteryLabel,
+	batteryLevel,
 	binClass,
 	binLabel,
 	rssiClass,
+	signalBars,
 } from '../utils/format.js'
+
+/** SVG ring geometry: r=16 → circumference 2πr. */
+const RING_CIRC = 2 * Math.PI * 16
 
 /** Phases that mean the robot is actively cleaning. */
 const CLEANING = new Set(['run'])
@@ -87,6 +121,24 @@ export default {
 			}
 			return `${this.rssi} dBm`
 		},
+		bars() {
+			return signalBars(this.rssi)
+		},
+		ringCirc() {
+			return RING_CIRC.toFixed(2)
+		},
+		/** Dash offset draws the arc for the current battery %. Charging 0% shows a token 6%. */
+		ringOffset() {
+			let pct = Number(this.battery)
+			if (!Number.isFinite(pct)) {
+				pct = 0
+			}
+			if (pct === 0 && this.phase === 'charge') {
+				pct = 6
+			}
+			const frac = Math.max(0, Math.min(1, pct / 100))
+			return (RING_CIRC * (1 - frac)).toFixed(2)
+		},
 		nextCleanText() {
 			const n = this.nextScheduled
 			if (n && (n.day || n.local_time)) {
@@ -131,6 +183,6 @@ export default {
 		},
 	},
 
-	methods: { batteryClass, batteryLabel, binClass, binLabel, rssiClass },
+	methods: { batteryClass, batteryLabel, batteryLevel, binClass, binLabel, rssiClass },
 }
 </script>

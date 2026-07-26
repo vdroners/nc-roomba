@@ -285,4 +285,8 @@ body.theme--dark .nc-gcs-app-shell,
 	align-items: center;
 }
 
-:root { --nc-app-accent: #2bbbad; --nc-app-accent-soft: rgba(43, 187, 173, 0.15); }
+/*
+ * NC Roomba owns a brass accent (defined in style.scss, which loads after this
+ * file). The teal accent that used to be pinned here was dead weight — it was
+ * always overridden — so it has been removed to avoid confusion.
+ */

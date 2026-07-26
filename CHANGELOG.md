@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-07-26
+
+### Added
+
+- **Dashboard data-visualization.** The hero's flat facts are now compact
+  gauges driven by real telemetry: an SVG **battery ring** (level-coloured,
+  charge-aware), **Wi-Fi signal bars** from the RSSI buckets, and a **bin fill
+  glyph**. LifetimeStats gains a **mission success-rate donut**. Pure helpers
+  `signalBars()` / `batteryLevel()` in `format.js`, unit-tested.
+- **Iconified controls.** ControlPad buttons now carry leading glyphs
+  (Clean/Spot/Pause/Resume/Dock/Find/Stop) via `NcIconSvgWrapper` + inline
+  MDI-style paths — no new dependency.
+
+### Changed
+
+- **Design-token layer + elevation.** Added systematic radius, spacing,
+  elevation (`--nc-roomba-shadow-sm/md/lg` + a brass `--…-glow`), state-colour
+  and motion tokens; panels and cards now have real depth and a hairline
+  highlight, interactive rows/tiles lift on hover, and the mission stage gets a
+  brass glow while cleaning. Hardcoded pause/dock/fault colours were promoted to
+  tokens so light theme holds up.
+- **Gentle entrance motion** for dashboard panels (staggered rise), all
+  `prefers-reduced-motion` aware.
+
+### Fixed
+
+- Removed a dead teal `:root` accent override in `nc-roomba-theme.css` that was
+  always shadowed by the brass accent — the butler palette is now unambiguous.
+
 ## [0.6.0] - 2026-07-25
 
 ### Added

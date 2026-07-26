@@ -7,6 +7,25 @@
 			</div>
 		</dl>
 
+		<div v-if="successRate !== null" class="nc-roomba-donut-row">
+			<svg class="nc-roomba-donut" viewBox="0 0 44 44" aria-hidden="true">
+				<circle class="nc-roomba-donut__track" cx="22" cy="22" r="18" />
+				<circle
+					class="nc-roomba-donut__value"
+					cx="22"
+					cy="22"
+					r="18"
+					:stroke-dasharray="donutCirc"
+					:stroke-dashoffset="donutOffset"
+					transform="rotate(-90 22 22)" />
+				<text class="nc-roomba-donut__label" x="22" y="22" dominant-baseline="central" text-anchor="middle">{{ successRate }}%</text>
+			</svg>
+			<div>
+				<p class="nc-roomba-donut-row__title">Mission success rate</p>
+				<p class="nc-roomba-muted">{{ successCaption }}</p>
+			</div>
+		</div>
+
 		<dl v-if="stats.length" class="nc-roomba-stats">
 			<div v-for="stat in stats" :key="stat.label" class="nc-roomba-stats__item">
 				<dt>{{ stat.label }}</dt>
@@ -19,6 +38,9 @@
 
 <script>
 import { durationLabel } from '../utils/format.js'
+
+/** Donut geometry: r=18 → circumference 2πr. */
+const DONUT_CIRC = 2 * Math.PI * 18
 
 /**
  * Presentational lifetime rollup shared by the Dashboard (health zone) and the
@@ -85,6 +107,28 @@ export default {
 				rows.push({ label: 'Times stuck', value: Number(run.nStuck).toLocaleString() })
 			}
 			return rows
+		},
+
+		/** @returns {number|null} whole-percent success rate, or null when unknown */
+		successRate() {
+			const total = Number(this.bbmssn && this.bbmssn.nMssn)
+			const ok = Number(this.bbmssn && this.bbmssn.nMssnOk)
+			if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(ok)) {
+				return null
+			}
+			return Math.round((ok / total) * 100)
+		},
+		successCaption() {
+			const total = Number(this.bbmssn && this.bbmssn.nMssn) || 0
+			const ok = Number(this.bbmssn && this.bbmssn.nMssnOk) || 0
+			return `${ok.toLocaleString()} of ${total.toLocaleString()} missions completed cleanly`
+		},
+		donutCirc() {
+			return DONUT_CIRC.toFixed(2)
+		},
+		donutOffset() {
+			const frac = Math.max(0, Math.min(1, (this.successRate || 0) / 100))
+			return (DONUT_CIRC * (1 - frac)).toFixed(2)
 		},
 
 		identity() {

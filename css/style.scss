@@ -22,6 +22,48 @@
 	--nc-roomba-stage-pause: rgba(255, 152, 0, 0.2);
 	--nc-roomba-stage-dock: rgba(100, 149, 237, 0.2);
 	--nc-roomba-stage-fault: rgba(244, 67, 54, 0.22);
+
+	/* ── Design tokens (v0.7 revamp) ─────────────────────────────────────
+	 * Systematic scales so surfaces feel layered and consistent instead of
+	 * flat color-mix tints with ad-hoc magic numbers.
+	 */
+
+	/* Radius scale — replaces the scattered 8/10/12/14px magic numbers. */
+	--r-sm: 8px;
+	--r-md: 10px;
+	--r-lg: var(--border-radius-large, 12px);
+	--r-pill: 999px;
+
+	/* Spacing scale — 4px base. */
+	--sp-1: 0.25rem;
+	--sp-2: 0.5rem;
+	--sp-3: 0.75rem;
+	--sp-4: 1rem;
+	--sp-5: 1.5rem;
+	--sp-6: 2rem;
+
+	/* Elevation — neutral, soft, theme-agnostic (works on light + dark). */
+	--nc-roomba-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06);
+	--nc-roomba-shadow-md: 0 2px 6px rgba(0, 0, 0, 0.1), 0 4px 12px rgba(0, 0, 0, 0.08);
+	--nc-roomba-shadow-lg: 0 6px 18px rgba(0, 0, 0, 0.14), 0 12px 32px rgba(0, 0, 0, 0.12);
+	/* Brass accent glow — for active/cleaning emphasis and the mission stage. */
+	--nc-roomba-shadow-glow: 0 0 0 1px rgba(196, 165, 116, 0.25), 0 4px 20px rgba(196, 165, 116, 0.18);
+	/* Hairline top highlight so cards read as raised, not painted-on. */
+	--nc-roomba-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+	/* State colours — promoted from hardcoded hex so light theme holds up. */
+	--nc-roomba-state-run: var(--nc-roomba-brass-bright);
+	--nc-roomba-state-pause: #ffb74d;
+	--nc-roomba-state-dock: #90caf9;
+	--nc-roomba-state-fault: #ef9a9a;
+	/* Translucent surface for dark-on-dark insets (was hardcoded rgba(0,0,0,.28)). */
+	--nc-roomba-inset: color-mix(in srgb, var(--color-main-background) 55%, transparent);
+
+	/* Motion — a small easing + duration vocabulary. */
+	--nc-roomba-ease: cubic-bezier(0.22, 0.8, 0.3, 1);
+	--nc-roomba-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+	--nc-roomba-dur-fast: 0.15s;
+	--nc-roomba-dur-med: 0.3s;
 }
 
 #nc-roomba-root,
@@ -180,10 +222,11 @@
 .nc-roomba-panel {
 	background: color-mix(in srgb, var(--color-main-background) 92%, var(--nc-roomba-charcoal) 8%);
 	border: 1px solid color-mix(in srgb, var(--nc-roomba-brass) 22%, var(--color-border));
-	border-radius: var(--nc-roomba-radius);
-	margin: 0.75rem 0;
+	border-radius: var(--r-lg);
+	margin: var(--sp-3) 0;
 	padding: 0.9rem 1rem;
-	box-shadow: 0 1px 0 rgba(196, 165, 116, 0.08);
+	// Real elevation + a hairline top highlight so cards read as raised.
+	box-shadow: var(--nc-roomba-shadow-sm), var(--nc-roomba-highlight);
 
 	h3 {
 		font-size: 1rem;
@@ -289,7 +332,7 @@
 
 	&__fact {
 		background: var(--color-background-hover);
-		border-radius: var(--border-radius-element, 8px);
+		border-radius: var(--r-sm);
 		min-width: 0;
 		padding: 0.35rem 0.55rem;
 
@@ -306,6 +349,149 @@
 			&.warn { color: var(--color-warning-text, var(--color-main-text)); }
 			&.danger { color: var(--color-error-text, var(--color-main-text)); }
 		}
+
+		&--gauge {
+			align-items: center;
+			display: flex;
+			gap: 0.5rem;
+		}
+	}
+
+	&__gaugetext { min-width: 0; }
+}
+
+/* ─── Gauges: battery ring, Wi-Fi bars, bin glyph ────────────────────── */
+
+.nc-roomba-ring {
+	flex: none;
+	height: 34px;
+	width: 34px;
+
+	&__track {
+		fill: none;
+		stroke: color-mix(in srgb, var(--color-main-text) 14%, transparent);
+		stroke-width: 4;
+	}
+
+	&__value {
+		fill: none;
+		stroke: var(--nc-roomba-brass);
+		stroke-linecap: round;
+		stroke-width: 4;
+		transition: stroke-dashoffset var(--nc-roomba-dur-med) var(--nc-roomba-ease);
+	}
+
+	&.is-ok &__value { stroke: var(--nc-roomba-brass); }
+	&.is-charge &__value { stroke: var(--nc-roomba-state-dock); }
+	&.is-warn &__value { stroke: var(--nc-roomba-state-pause); }
+	&.is-danger &__value { stroke: var(--nc-roomba-state-fault); }
+}
+
+.nc-roomba-bars {
+	align-items: flex-end;
+	display: inline-flex;
+	flex: none;
+	gap: 2px;
+	height: 20px;
+	width: 26px;
+
+	i {
+		background: color-mix(in srgb, var(--color-main-text) 18%, transparent);
+		border-radius: 1px;
+		display: block;
+		flex: 1;
+
+		&:nth-child(1) { height: 35%; }
+		&:nth-child(2) { height: 55%; }
+		&:nth-child(3) { height: 78%; }
+		&:nth-child(4) { height: 100%; }
+
+		&.on { background: var(--nc-roomba-brass); }
+	}
+
+	&.warn i.on { background: var(--nc-roomba-state-pause); }
+	&.danger i.on { background: var(--nc-roomba-state-fault); }
+}
+
+.nc-roomba-bin {
+	align-items: flex-end;
+	border: 2px solid color-mix(in srgb, var(--color-main-text) 40%, transparent);
+	border-radius: 2px 2px 3px 3px;
+	display: inline-flex;
+	flex: none;
+	height: 22px;
+	overflow: hidden;
+	width: 18px;
+
+	&__fill {
+		background: var(--nc-roomba-brass);
+		display: block;
+		width: 100%;
+
+		&.is-ok { height: 35%; background: color-mix(in srgb, var(--nc-roomba-brass) 70%, transparent); }
+		&.is-full { height: 100%; background: var(--nc-roomba-state-pause); }
+		&.is-missing { height: 0; }
+	}
+
+	&.danger { border-style: dashed; border-color: var(--nc-roomba-state-fault); }
+}
+
+/* ─── Success-rate donut (LifetimeStats) ─────────────────────────────── */
+
+.nc-roomba-donut-row {
+	align-items: center;
+	display: flex;
+	gap: 0.75rem;
+	margin: 0.25rem 0 0.5rem;
+
+	&__title { font-weight: 650; margin: 0; }
+}
+
+.nc-roomba-donut {
+	flex: none;
+	height: 60px;
+	width: 60px;
+
+	&__track {
+		fill: none;
+		stroke: color-mix(in srgb, var(--color-main-text) 14%, transparent);
+		stroke-width: 5;
+	}
+
+	&__value {
+		fill: none;
+		stroke: var(--nc-roomba-brass);
+		stroke-linecap: round;
+		stroke-width: 5;
+		transition: stroke-dashoffset var(--nc-roomba-dur-med) var(--nc-roomba-ease);
+	}
+
+	&__label {
+		fill: var(--color-main-text);
+		font-size: 11px;
+		font-weight: 700;
+	}
+}
+
+/* ─── Dashboard entrance motion ──────────────────────────────────────── */
+
+@keyframes nc-roomba-rise {
+	from { opacity: 0; transform: translateY(8px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+.nc-roomba-dashboard > * {
+	animation: nc-roomba-rise var(--nc-roomba-dur-med) var(--nc-roomba-ease-out) both;
+}
+
+// Stagger the zones a touch so the page assembles rather than pops.
+.nc-roomba-dashboard > :nth-child(2) { animation-delay: 0.04s; }
+.nc-roomba-dashboard > :nth-child(3) { animation-delay: 0.08s; }
+.nc-roomba-dashboard > :nth-child(4) { animation-delay: 0.12s; }
+
+@media (prefers-reduced-motion: reduce) {
+	.nc-roomba-dashboard > * {
+		animation: none;
 	}
 }
 
@@ -318,12 +504,15 @@
 		radial-gradient(ellipse 80% 70% at 50% 45%, var(--stage-glow), transparent 70%),
 		linear-gradient(165deg, var(--nc-roomba-charcoal) 0%, var(--nc-roomba-charcoal-soft) 100%);
 	border: 1px solid color-mix(in srgb, var(--nc-roomba-brass) 40%, transparent);
-	border-radius: calc(var(--nc-roomba-radius) + 2px);
+	border-radius: var(--r-lg);
+	// Elevation so the theater sits above the page; run state adds a brass glow.
+	box-shadow: var(--nc-roomba-shadow-md);
 	color: var(--nc-roomba-cream);
 	margin: 0;
 	overflow: hidden;
 	padding: 1rem 1.1rem 1.15rem;
 	position: relative;
+	transition: box-shadow var(--nc-roomba-dur-med) var(--nc-roomba-ease);
 
 	&--idle {
 		--stage-glow: rgba(196, 165, 116, 0.1);
@@ -332,20 +521,21 @@
 	&--run {
 		--stage-ring: var(--nc-roomba-brass-bright);
 		--stage-glow: var(--nc-roomba-stage-run);
+		box-shadow: var(--nc-roomba-shadow-md), var(--nc-roomba-shadow-glow);
 	}
 
 	&--pause {
-		--stage-ring: #ffb74d;
+		--stage-ring: var(--nc-roomba-state-pause);
 		--stage-glow: var(--nc-roomba-stage-pause);
 	}
 
 	&--dock {
-		--stage-ring: #90caf9;
+		--stage-ring: var(--nc-roomba-state-dock);
 		--stage-glow: var(--nc-roomba-stage-dock);
 	}
 
 	&--fault {
-		--stage-ring: #ef9a9a;
+		--stage-ring: var(--nc-roomba-state-fault);
 		--stage-glow: var(--nc-roomba-stage-fault);
 	}
 
@@ -1069,16 +1259,23 @@
 	&__row {
 		background: var(--color-background-hover);
 		border: 1px solid transparent;
-		border-radius: var(--border-radius-element, 8px);
+		border-radius: var(--r-sm);
 		cursor: pointer;
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
 		padding: 0.55rem 0.7rem;
 		text-align: left;
+		transition: transform var(--nc-roomba-dur-fast) var(--nc-roomba-ease),
+			box-shadow var(--nc-roomba-dur-fast) var(--nc-roomba-ease),
+			border-color var(--nc-roomba-dur-fast) var(--nc-roomba-ease);
 		width: 100%;
 
-		&:hover { border-color: var(--color-border); }
+		&:hover {
+			border-color: color-mix(in srgb, var(--nc-roomba-brass) 45%, var(--color-border));
+			box-shadow: var(--nc-roomba-shadow-md);
+			transform: translateY(-1px);
+		}
 		&.active { border-color: var(--nc-app-accent); background: var(--nc-app-accent-soft); }
 	}
 
@@ -1140,24 +1337,41 @@
 		align-items: flex-start;
 		background: var(--color-background-hover);
 		border: 1px solid transparent;
-		border-radius: var(--border-radius-element, 8px);
+		border-radius: var(--r-sm);
+		box-shadow: var(--nc-roomba-shadow-sm);
 		display: flex;
 		gap: 0.55rem;
 		padding: 0.55rem 0.65rem;
+		transition: transform var(--nc-roomba-dur-fast) var(--nc-roomba-ease),
+			box-shadow var(--nc-roomba-dur-fast) var(--nc-roomba-ease);
+
+		&:not(.is-locked):hover {
+			box-shadow: var(--nc-roomba-shadow-md);
+			transform: translateY(-1px);
+		}
 
 		&.is-gold { border-color: color-mix(in srgb, var(--nc-roomba-brass) 55%, transparent); }
 		&.is-silver { border-color: color-mix(in srgb, var(--color-border) 80%, var(--nc-roomba-brass)); }
 		&.is-bronze { border-color: var(--color-border); }
 
 		&.is-locked {
+			box-shadow: none;
 			opacity: 0.55;
 			filter: grayscale(0.7);
 		}
 	}
 
 	&__icon {
-		font-size: 1.35rem;
+		align-items: center;
+		display: inline-flex;
+		font-size: 1.2rem;
+		height: 2rem;
+		justify-content: center;
 		line-height: 1;
+		width: 2rem;
+		// A tier-coloured ring around the earned badge glyph.
+		.nc-roomba-achv__item.is-gold & { box-shadow: 0 0 0 2px color-mix(in srgb, var(--nc-roomba-brass) 60%, transparent); border-radius: var(--r-pill); }
+		.nc-roomba-achv__item.is-silver & { box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-border) 70%, var(--nc-roomba-brass)); border-radius: var(--r-pill); }
 	}
 
 	&__body { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }

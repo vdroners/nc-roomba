@@ -138,6 +138,46 @@ export function rssiClass(rssi) {
 }
 
 /**
+ * How many of 4 Wi-Fi strength bars to light for a dBm reading. Buckets follow
+ * the same rule-of-thumb as {@link rssiClass}: >=-55 excellent (4), >=-65 good
+ * (3), >=-75 usable (2), otherwise weak (1); no reading lights 0.
+ *
+ * @param {number|null|undefined} rssi dBm
+ * @returns {number} 0..4
+ */
+export function signalBars(rssi) {
+	if (rssi === null || rssi === undefined || Number.isNaN(Number(rssi))) {
+		return 0
+	}
+	const v = Number(rssi)
+	if (v >= -55) return 4
+	if (v >= -65) return 3
+	if (v >= -75) return 2
+	return 1
+}
+
+/**
+ * Level bucket for the battery ring's colour. Charging at 0% is a calibrating
+ * reading (see {@link batteryClass}) so it reads neutral, not critical.
+ *
+ * @param {number|null|undefined} pct
+ * @param {string|null|undefined} [phase]
+ * @returns {'charge'|'ok'|'warn'|'danger'|'unknown'}
+ */
+export function batteryLevel(pct, phase) {
+	if (pct === null || pct === undefined || Number.isNaN(Number(pct))) {
+		return 'unknown'
+	}
+	const v = Number(pct)
+	if (v === 0 && phase === 'charge') {
+		return 'charge'
+	}
+	if (v <= 15) return 'danger'
+	if (v <= 30) return 'warn'
+	return 'ok'
+}
+
+/**
  * @param {object|null} state normalized state DTO
  * @returns {string} phase + cycle label, e.g. `Cleaning · Clean`
  */
