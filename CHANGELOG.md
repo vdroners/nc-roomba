@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-07-25
+
+### Added
+
+- **Achievements.** A butler-themed, purely-derived achievement wall (no new DB)
+  computed live from the robot's own counters via `src/utils/achievements.js` —
+  mission, run-hour, area, reliability and streak tiers with progress bars on the
+  ones still locked, plus a "New!" tag for freshly-earned badges. Shown on
+  History with an unlocked/total teaser on the Dashboard. Unit-tested against a
+  veteran unit's counters.
+- **Dashboard "at a glance" hero (`StatusHero.vue`).** A single card up top with
+  a Ready / Cleaning / Charging / Returning / Attention status pill plus battery,
+  bin, Wi-Fi and next-scheduled-clean — answering "is the robot OK and what is it
+  doing" without scanning five widgets.
+- **History lifetime band + inviting empty state.** History now leads with the
+  robot's lifetime totals (missions, run time, area, success rate) so it is
+  informative before any mission is recorded, and the empty state explains what
+  will appear and offers a **Clean now** button instead of a dead end.
+
+### Changed
+
+- **Dashboard reorganized into three zones** — at-a-glance hero → controls + live
+  theater (with the error alert folded in beside the controls) → activity +
+  lifetime/health — so the page reads glance → act → review. Maintenance
+  advisories are demoted to the bottom and only render when there are hints.
+- Lifetime stats + the model/firmware identity card were extracted into a shared
+  `LifetimeStats.vue` reused by both the Dashboard and History (previously buried
+  in the Maintenance panel).
+- **History mission rows are now visual cards** — outcome badge (Complete /
+  Error / In progress), relative date ("Today 14:20"), duration and coverage —
+  instead of a plain `#id · cycle` line.
+
 ## [0.5.2] - 2026-07-25
 
 ### Changed
