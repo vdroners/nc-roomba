@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-25
+
+### Fixed
+
+- **App tabs could not be scrolled** — the main content region was a flex child
+  with no `overflow-y`, so anything below the fold was unreachable. The shell now
+  bounds its height and `.nc-roomba-main` owns a real scroll region
+  (`overflow-y:auto; min-height:0`); the status strip and nav stay pinned above.
+- **Battery showed a red 0% while charging.** A freshly power-cycled robot
+  reports `batPct: 0` until the BMS recalibrates over the first charge cycle.
+  `batteryLabel`/`batteryClass` are now phase-aware: 0% during `charge` renders
+  as a neutral "Charging…" instead of a critical reading (normal buckets
+  unchanged when a real percentage is reported).
+
+### Added
+
+- **Dock / ready chip** in the status strip decoding phase + `not_ready` into
+  "On dock / Off dock / Not ready" instead of a raw bitfield.
+- **Charging-calibration hint** on the mission stage explaining the 0%-while-
+  charging behavior so it does not read as a fault.
+- **"About the robot" identity card** and richer lifetime stats in Maintenance:
+  model (`sku`), firmware (`software_version`), mission success rate, average
+  mission length, and cliff-pick / panic counts — all from data the robot
+  already reports.
+
+### Changed
+
+- **Onboarding hardened for repeatable setup.** `onboard()` now names the robot
+  from the value it reports (`robotname`) instead of hardcoding "Alfred", stores
+  its model `sku`, and maps get-password failures to actionable messages
+  (not-in-onboarding → hold HOME; ECONNREFUSED → close the iRobot app;
+  unreachable → check Wi-Fi/IP) rather than a generic `get_password_failed`.
+
 ## [0.4.0] - 2026-07-25
 
 ### Changed

@@ -29,7 +29,12 @@
 
 		<MissionTimeline :phases="store.livePhases" title="Current mission" />
 
-		<MaintenanceHints :hints="store.hints" :bbrun="store.bbrun" :bbmssn="store.bbmssn" />
+		<MaintenanceHints
+			:hints="store.hints"
+			:bbrun="store.bbrun"
+			:bbmssn="store.bbmssn"
+			:software-version="store.softwareVersion"
+			:sku="store.sku" />
 	</div>
 </template>
 

@@ -80,6 +80,8 @@ export const useRobotStore = defineStore('robot', {
 		hints: (state) => (state.state && state.state.maintenance_hints) || [],
 		bbrun: (state) => (state.state && state.state.bbrun) || {},
 		bbmssn: (state) => (state.state && state.state.bbmssn) || {},
+		softwareVersion: (state) => (state.state && state.state.software_version) || '',
+		sku: (state) => (state.state && state.state.sku) || '',
 		nextScheduled: (state) => (state.state && state.state.next_scheduled) || null,
 		bridgeInfo: (state) => (state.state && state.state.bridge) || {},
 		// The page controller only lets group members and admins render the app at

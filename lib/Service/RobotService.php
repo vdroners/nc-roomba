@@ -119,6 +119,13 @@ class RobotService
 		} elseif ($robot->getId() === null) {
 			$robot->setPasswordEnc('');
 		}
+		// Persist a few immutable identity facts (e.g. model SKU) alongside the
+		// robot so the UI can show them without a live connection.
+		if (isset($data['settings']) && is_array($data['settings'])) {
+			$existing = json_decode((string) ($robot->getSettingsJson() ?? ''), true);
+			$merged = array_merge(is_array($existing) ? $existing : [], $data['settings']);
+			$robot->setSettingsJson(json_encode($merged));
+		}
 		$robot->setUpdatedAt($now);
 
 		if ($robot->getId() === null) {
@@ -348,7 +355,8 @@ class RobotService
 	{
 		$pw = $this->bridge->getPassword($opts);
 		if (!$pw['ok'] || !is_array($pw['body'])) {
-			return ['ok' => false, 'error' => $pw['error'] ?? 'get_password_failed', 'body' => $pw['body']];
+			$raw = $pw['error'] ?? (is_array($pw['body']) ? ($pw['body']['error'] ?? '') : '');
+			return ['ok' => false, 'error' => $this->onboardErrorHint((string) $raw), 'body' => $pw['body']];
 		}
 		$body = $pw['body'];
 		$blid = (string) ($body['blid'] ?? $body['username'] ?? '');
@@ -357,12 +365,19 @@ class RobotService
 		if ($blid === '' || $password === '' || $ip === '') {
 			return ['ok' => false, 'error' => 'incomplete_credentials', 'body' => $body];
 		}
+		// Prefer the operator's explicit name; otherwise use the name the robot
+		// reports (robotname), only falling back to 'Alfred' as a last resort.
+		$optName = trim((string) ($opts['name'] ?? ''));
+		$reported = trim((string) ($body['robotname'] ?? $body['name'] ?? ''));
+		$name = $optName !== '' ? $optName : ($reported !== '' ? $reported : 'Alfred');
+		$sku = trim((string) ($body['sku'] ?? ''));
 		$robot = $this->upsertRobot([
-			'name' => (string) ($opts['name'] ?? $body['name'] ?? 'Alfred'),
+			'name' => $name,
 			'blid' => $blid,
 			'password' => $password,
 			'host' => $ip,
 			'port' => 8883,
+			'settings' => $sku !== '' ? ['sku' => $sku] : [],
 		]);
 		$connect = $this->bridge->connect([
 			'blid' => $blid,
@@ -377,6 +392,30 @@ class RobotService
 			'connect' => $connect['body'],
 			'error' => $connect['error'],
 		];
+	}
+
+	/**
+	 * Turn a raw bridge/robot get-password error into an operator-actionable
+	 * message. The bridge already produces descriptive strings for the common
+	 * cases (timeout / not-in-onboarding-mode / ECONNREFUSED); this maps them to
+	 * a single clear instruction instead of surfacing `get_password_failed`.
+	 */
+	private function onboardErrorHint(string $raw): string
+	{
+		$lower = strtolower($raw);
+		if ($lower === '') {
+			return 'Could not reach the robot to retrieve its password. Check the IP and that the bridge is up.';
+		}
+		if (str_contains($lower, 'econnrefused') || str_contains($lower, 'conflict') || str_contains($lower, 'already')) {
+			return 'The robot refused the connection — another MQTT client has it. Close the iRobot app, wait ~30s, then retry.';
+		}
+		if (str_contains($lower, 'onboarding') || str_contains($lower, 'not in') || str_contains($lower, 'timeout') || str_contains($lower, 'hold home')) {
+			return 'Robot not in onboarding mode: press and hold HOME until it beeps, then click Retrieve within ~60 seconds.';
+		}
+		if (str_contains($lower, 'ehostunreach') || str_contains($lower, 'no route') || str_contains($lower, 'etimedout')) {
+			return 'Robot unreachable on the LAN. Confirm it is on your Wi-Fi and reachable at the given IP (port 8883).';
+		}
+		return $raw;
 	}
 
 	/** @return array<string, mixed> */

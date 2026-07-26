@@ -8,8 +8,11 @@
 			title="Bridge is in ROOMBA_MOCK=1 — buttons do not touch the real robot">
 			MOCK
 		</span>
-		<span :class="['nc-roomba-chip', batteryClass(battery)]" data-field="battery" :title="batteryTitle">
-			{{ batteryLabel(battery) }}
+		<span :class="['nc-roomba-chip', batteryClass(battery, phase)]" data-field="battery" :title="batteryTitle">
+			{{ batteryLabel(battery, phase) }}
+		</span>
+		<span v-if="dockState" :class="['nc-roomba-chip', dockState.cls]" data-field="dock-state" :title="dockState.title">
+			{{ dockState.label }}
 		</span>
 		<span :class="['nc-roomba-chip', binClass(bin)]" data-field="bin">{{ binLabel(bin) }}</span>
 		<span :class="['nc-roomba-chip', rssiClass(rssi)]" data-field="rssi">{{ rssiLabel(rssi) }}</span>
@@ -82,6 +85,33 @@ export default {
 		},
 		rssi() {
 			return this.state ? this.state.rssi : null
+		},
+		phase() {
+			return this.state ? this.state.phase : null
+		},
+		/**
+		 * Decode the robot's readiness into a plain-language chip. `not_ready`
+		 * is a bitfield ("why can't I clean right now"); we don't decode every
+		 * bit, just give the operator the docked/ready picture at a glance.
+		 *
+		 * @returns {{label:string,cls:string,title:string}|null}
+		 */
+		dockState() {
+			if (!this.state) {
+				return null
+			}
+			const phase = String(this.state.phase || '')
+			const notReady = Number(this.state.not_ready) || 0
+			if (phase === 'charge' || phase === 'dockend' || phase === 'recharge') {
+				return { label: 'On dock', cls: 'ok', title: 'Robot is docked' }
+			}
+			if (notReady !== 0) {
+				return { label: 'Not ready', cls: 'warn', title: `Not ready to clean (code ${notReady})` }
+			}
+			if (phase === 'run' || phase === 'hmMidMsn' || phase === 'hmUsrDock' || phase === 'hmPostMsn') {
+				return { label: 'Off dock', cls: '', title: 'Robot is away from the dock' }
+			}
+			return null
 		},
 		hasSample() {
 			return Boolean(this.state && this.state.updated_at)

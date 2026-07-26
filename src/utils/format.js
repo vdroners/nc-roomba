@@ -32,22 +32,39 @@ const CYCLE_LABELS = {
 }
 
 /**
+ * A robot that was just power-cycled (or had its battery pulled) reports
+ * `batPct: 0` while docked until the BMS recalibrates over the first charge
+ * cycle. Rendering that as a red "0%" wrongly reads as a critical battery, so
+ * when we know the robot is charging we show a calibrating label instead.
+ *
  * @param {number|null|undefined} pct
+ * @param {string|null|undefined} [phase] current robot phase (e.g. `charge`)
  * @returns {string} e.g. `86%`
  */
-export function batteryLabel(pct) {
-	return pct === null || pct === undefined || Number.isNaN(Number(pct)) ? '—' : `${Math.round(Number(pct))}%`
+export function batteryLabel(pct, phase) {
+	if (pct === null || pct === undefined || Number.isNaN(Number(pct))) {
+		return '—'
+	}
+	if (Number(pct) === 0 && phase === 'charge') {
+		return 'Charging…'
+	}
+	return `${Math.round(Number(pct))}%`
 }
 
 /**
  * @param {number|null|undefined} pct
+ * @param {string|null|undefined} [phase] current robot phase (e.g. `charge`)
  * @returns {'ok'|'warn'|'danger'|''} chip severity class
  */
-export function batteryClass(pct) {
+export function batteryClass(pct, phase) {
 	if (pct === null || pct === undefined) {
 		return ''
 	}
 	const value = Number(pct)
+	// 0% while charging is a recalibrating reading, not a critical battery.
+	if (value === 0 && phase === 'charge') {
+		return ''
+	}
 	if (value <= 15) {
 		return 'danger'
 	}

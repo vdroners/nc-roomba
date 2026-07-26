@@ -26,6 +26,9 @@
 
 #nc-roomba-root,
 .nc-roomba-mount {
+	// Own the full height of the Nextcloud #app-content frame so the shell can
+	// bound its flex column and hand a real scroll region to .nc-roomba-main.
+	height: 100%;
 	min-height: 100%;
 }
 
@@ -36,7 +39,11 @@
 	color: var(--color-main-text);
 	display: flex;
 	flex-direction: column;
+	// Bounded height (not just min-height) is what lets the flex child below
+	// shrink and scroll instead of the whole shell growing past the viewport.
+	height: 100%;
 	min-height: 100%;
+	overflow: hidden;
 	transition: background 0.6s ease;
 
 	&.is-cleaning {
@@ -138,6 +145,11 @@
 	flex: 1;
 	margin: 0 auto;
 	max-width: 1100px;
+	// min-height:0 lets this flex child shrink below its content so overflow-y
+	// actually produces a scrollbar; without it the content overflows the shell
+	// invisibly and cannot be reached (the reported "can't scroll" bug).
+	min-height: 0;
+	overflow-y: auto;
 	padding: 1rem;
 	width: 100%;
 }
@@ -261,6 +273,14 @@
 		color: var(--nc-roomba-cream-muted);
 		font-size: 0.85rem;
 		margin: 0;
+	}
+
+	&__hint {
+		color: var(--color-warning-text, var(--nc-roomba-cream-muted));
+		flex-basis: 100%;
+		font-size: 0.8rem;
+		margin: 0.15rem 0 0;
+		opacity: 0.9;
 	}
 
 	&__canvas {
@@ -555,6 +575,13 @@
 	gap: 0.5rem;
 	grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 	margin: 0.5rem 0;
+
+	// Identity card (model / firmware): brass-tinted so it reads as "about this
+	// robot" rather than another wear counter.
+	&--identity .nc-roomba-stats__item {
+		background: var(--nc-app-accent-soft, var(--color-background-hover));
+		border: 1px solid color-mix(in srgb, var(--nc-roomba-brass) 30%, transparent);
+	}
 }
 
 .nc-roomba-stats__item {

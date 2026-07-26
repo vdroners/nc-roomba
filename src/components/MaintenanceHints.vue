@@ -12,6 +12,13 @@
 			No advisories. Counters look normal for the hours logged.
 		</p>
 
+		<dl v-if="identity.length" class="nc-roomba-stats nc-roomba-stats--identity">
+			<div v-for="row in identity" :key="row.label" class="nc-roomba-stats__item">
+				<dt>{{ row.label }}</dt>
+				<dd>{{ row.value }}</dd>
+			</div>
+		</dl>
+
 		<dl v-if="stats.length" class="nc-roomba-stats">
 			<div v-for="stat in stats" :key="stat.label" class="nc-roomba-stats__item">
 				<dt>{{ stat.label }}</dt>
@@ -52,6 +59,16 @@ export default {
 			type: Object,
 			default: () => ({}),
 		},
+		/** Robot firmware string, e.g. `v2.4.17-138`. */
+		softwareVersion: {
+			type: String,
+			default: '',
+		},
+		/** Robot model SKU, e.g. `R960020`. */
+		sku: {
+			type: String,
+			default: '',
+		},
 	},
 
 	computed: {
@@ -87,6 +104,32 @@ export default {
 			}
 			if (Number.isFinite(Number(mssn.nMssnOk))) {
 				rows.push({ label: 'Completed', value: String(mssn.nMssnOk) })
+			}
+			// Success rate is the most useful single derived number for wear/health.
+			if (Number.isFinite(Number(mssn.nMssn)) && Number(mssn.nMssn) > 0
+				&& Number.isFinite(Number(mssn.nMssnOk))) {
+				rows.push({ label: 'Success rate', value: `${Math.round((Number(mssn.nMssnOk) / Number(mssn.nMssn)) * 100)}%` })
+			}
+			if (Number.isFinite(Number(mssn.aMssnM))) {
+				rows.push({ label: 'Avg mission', value: durationLabel(Number(mssn.aMssnM) * 60) })
+			}
+			if (Number.isFinite(Number(run.nPicks))) {
+				rows.push({ label: 'Cliff picks', value: Number(run.nPicks).toLocaleString() })
+			}
+			if (Number.isFinite(Number(run.nPanics))) {
+				rows.push({ label: 'Panics', value: Number(run.nPanics).toLocaleString() })
+			}
+			return rows
+		},
+
+		/** @returns {Array<{label:string,value:string}>} at-a-glance identity card */
+		identity() {
+			const rows = []
+			if (this.sku) {
+				rows.push({ label: 'Model', value: this.sku })
+			}
+			if (this.softwareVersion) {
+				rows.push({ label: 'Firmware', value: this.softwareVersion })
 			}
 			return rows
 		},

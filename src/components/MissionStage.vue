@@ -6,6 +6,7 @@
 		<header class="nc-roomba-stage__header">
 			<h3 class="nc-roomba-stage__title">{{ robotName }}</h3>
 			<p class="nc-roomba-stage__phase">{{ phaseText }}</p>
+			<p v-if="chargingCalibrationHint" class="nc-roomba-stage__hint">{{ chargingCalibrationHint }}</p>
 		</header>
 
 		<div class="nc-roomba-stage__canvas">
@@ -58,7 +59,7 @@
 </template>
 
 <script>
-import { durationLabel, phaseLabel } from '../utils/format.js'
+import { batteryLabel, durationLabel, phaseLabel } from '../utils/format.js'
 import { stageMood } from '../utils/stageMood.js'
 
 const EXTENT = 480
@@ -118,7 +119,23 @@ export default {
 		},
 		batteryText() {
 			const pct = this.state ? this.state.battery_pct : null
-			return pct === null || pct === undefined ? '—' : `${Math.round(Number(pct))}%`
+			return batteryLabel(pct, this.state && this.state.phase)
+		},
+		/**
+		 * One-line reassurance when a freshly power-cycled robot shows 0% while
+		 * docked — the reading recalibrates over the first charge cycle.
+		 *
+		 * @returns {string} hint text, or '' when not applicable
+		 */
+		chargingCalibrationHint() {
+			if (!this.state) {
+				return ''
+			}
+			const pct = Number(this.state.battery_pct)
+			if (this.state.phase === 'charge' && pct === 0) {
+				return 'Charging — battery level recalibrates over the first charge cycle after a power-cycle.'
+			}
+			return ''
 		},
 		cycleText() {
 			const c = this.cycle

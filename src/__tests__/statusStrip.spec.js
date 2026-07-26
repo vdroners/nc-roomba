@@ -27,6 +27,17 @@ describe('status strip labels', () => {
 		expect(batteryClass(null)).toBe('')
 	})
 
+	it('treats 0% while charging as calibrating, not critical', () => {
+		// A freshly power-cycled robot reports batPct 0 until the BMS recalibrates.
+		expect(batteryLabel(0, 'charge')).toBe('Charging…')
+		expect(batteryClass(0, 'charge')).toBe('')
+		// 0% when NOT charging is still a real critical reading.
+		expect(batteryLabel(0, 'stop')).toBe('0%')
+		expect(batteryClass(0, 'stop')).toBe('danger')
+		// A real charging percentage still grades normally.
+		expect(batteryClass(40, 'charge')).toBe('ok')
+	})
+
 	it('formats the bin sensor including the unsupported case', () => {
 		expect(binLabel('ok')).toBe('Bin OK')
 		expect(binLabel('full')).toBe('Bin full')
