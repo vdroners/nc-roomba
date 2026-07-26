@@ -1,6 +1,6 @@
 # NC Roomba
 
-![version](https://img.shields.io/badge/version-0.5.0-C4A574)
+![version](https://img.shields.io/badge/version-0.5.2-C4A574)
 ![license](https://img.shields.io/badge/license-AGPL--3.0--or--later-1a1a1c)
 
 Nextcloud app to control a Roomba over the **local LAN MQTT API**.

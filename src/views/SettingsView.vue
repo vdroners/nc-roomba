@@ -2,7 +2,7 @@
 	<div class="nc-roomba-view">
 		<div class="nc-roomba-view__header">
 			<h2>Settings</h2>
-			<p class="nc-roomba-muted">Schedule, cleaning preferences, discovery and retention.</p>
+			<p class="nc-roomba-muted">Schedule and cleaning preferences.</p>
 		</div>
 
 		<ScheduleWeekGrid
@@ -70,73 +70,10 @@
 			</template>
 		</div>
 
-		<div class="nc-roomba-panel" data-testid="auto-discover">
-			<h3>Auto discover</h3>
-			<p class="nc-roomba-muted">
-				Scans the LAN for Roomba MQTT (:8883). UDP broadcast is tried first; if the
-				robot stays quiet the bridge TCP-scans the configured subnet
-				(<code>ROOMBA_DISCOVER_SUBNETS</code>, default <code>10.0.0.0/24</code>).
-			</p>
-			<div class="nc-roomba-actions">
-				<NcButton :disabled="discovering" @click="runDiscover">
-					{{ discovering ? 'Scanning…' : 'Auto discover' }}
-				</NcButton>
-			</div>
-			<p v-if="discoverMsg" class="nc-roomba-muted">{{ discoverMsg }}</p>
-
-			<ul v-if="candidates.length" class="nc-roomba-list">
-				<li v-for="candidate in candidates" :key="candidate.ip">
-					<button
-						type="button"
-						:class="{ active: selected && selected.ip === candidate.ip }"
-						@click="selectCandidate(candidate)">
-						<span class="nc-roomba-list__title">
-							{{ candidate.robotname || 'Roomba' }} — {{ candidate.ip }}
-						</span>
-						<span class="nc-roomba-list__meta">
-							<span v-if="candidate.sku">{{ candidate.sku }}</span>
-							<span v-if="candidate.blid"> · BLID {{ candidate.blid }}</span>
-							<span v-if="candidate.source"> · via {{ candidate.source }}</span>
-						</span>
-					</button>
-				</li>
-			</ul>
-
-			<div v-if="selected" class="nc-roomba-fieldset">
-				<p>
-					Selected <strong>{{ selected.robotname || 'Roomba' }}</strong> at
-					<code>{{ selected.ip }}</code>. Give it a DHCP reservation before onboarding —
-					the local API is reached by IP.
-				</p>
-				<template v-if="store.canAdmin">
-					<p>Hold <strong>HOME</strong> until {{ robotName }} plays two tones, then:</p>
-					<div class="nc-roomba-actions">
-						<NcButton :disabled="onboarding" @click="runOnboard">
-							{{ onboarding ? 'Retrieving…' : 'Retrieve credentials (hold HOME)' }}
-						</NcButton>
-					</div>
-				</template>
-				<p v-else class="nc-roomba-muted">
-					Ask an administrator to finish onboarding in Administration → NC Roomba;
-					the local password is stored encrypted and only admins may write it.
-				</p>
-				<p v-if="onboardMsg">{{ onboardMsg }}</p>
-			</div>
-		</div>
-
-		<div v-if="store.canAdmin" class="nc-roomba-panel">
-			<h3>Retention</h3>
-			<p class="nc-roomba-muted">
-				Missions, phase events and telemetry older than the retention window
-				(default 365 days, set in Administration → NC Roomba) are pruned by a
-				background job. Preview counts rows; apply deletes them.
-			</p>
-			<div class="nc-roomba-actions">
-				<NcButton :disabled="retentionBusy" @click="previewRetention">Preview prune</NcButton>
-				<NcButton :disabled="retentionBusy" @click="applyRetention">Apply prune now</NcButton>
-			</div>
-			<p v-if="retentionMsg" class="nc-roomba-muted">{{ retentionMsg }}</p>
-		</div>
+		<p class="nc-roomba-muted nc-roomba-admin-pointer">
+			Robot discovery, onboarding and data retention live in
+			<strong>Administration → NC Roomba</strong>.
+		</p>
 
 		<NcNoteCard v-if="notice" :type="noticeType">{{ notice }}</NcNoteCard>
 	</div>
@@ -146,7 +83,6 @@
 import { NcButton, NcCheckboxRadioSwitch, NcNoteCard } from '@nextcloud/vue'
 
 import ScheduleWeekGrid from '../components/ScheduleWeekGrid.vue'
-import * as api from '../services/api.js'
 import { useRobotStore } from '../store/robot.js'
 
 const CARPET_OPTIONS = [
@@ -175,20 +111,6 @@ function editableCopy(preferences) {
 	}
 }
 
-/**
- * @param {object} result retention response
- * @param {string} verb 'would delete' / 'deleted'
- * @returns {string} one-line summary
- */
-function summarizePrune(result, verb) {
-	const counts = (result && (result.counts || result)) || {}
-	const parts = ['missions', 'phase_events', 'telemetry_samples', 'audits']
-		.filter((key) => counts[key] !== undefined)
-		.map((key) => `${counts[key]} ${key.replace(/_/g, ' ')}`)
-	const cutoff = result && result.cutoff ? ` (older than ${result.cutoff})` : ''
-	return parts.length ? `${verb} ${parts.join(', ')}${cutoff}` : `${verb} nothing${cutoff}`
-}
-
 export default {
 	name: 'SettingsView',
 
@@ -200,14 +122,6 @@ export default {
 			passOptions: PASS_OPTIONS,
 			prefs: editableCopy(null),
 			savingPrefs: false,
-			discovering: false,
-			discoverMsg: '',
-			candidates: [],
-			selected: null,
-			onboarding: false,
-			onboardMsg: '',
-			retentionBusy: false,
-			retentionMsg: '',
 			notice: '',
 			noticeType: 'success',
 		}
@@ -277,91 +191,6 @@ export default {
 		async reloadPrefs() {
 			await this.store.loadPreferences()
 			this.prefs = editableCopy(this.store.preferences)
-		},
-
-		async runDiscover() {
-			this.discovering = true
-			this.discoverMsg = 'Scanning the LAN (UDP broadcast, then :8883)…'
-			this.candidates = []
-			this.selected = null
-			this.onboardMsg = ''
-			try {
-				const data = await api.discover()
-				this.candidates = data.candidates || data.robots || []
-				if (this.candidates.length === 0) {
-					this.discoverMsg = data.error
-						? `Discovery failed: ${data.error}`
-						: 'No robot answered. Confirm the robot is on Wi-Fi and on this VLAN, then retry.'
-					return
-				}
-				const wanted = String(this.robotName || '').toLowerCase()
-				const named = wanted
-					? this.candidates.find((c) => String(c.robotname || '').toLowerCase() === wanted)
-					: null
-				this.selected = named || this.candidates[0]
-				this.discoverMsg = `Found ${this.candidates.length} robot(s).`
-			} catch (err) {
-				this.discoverMsg = (err.response && err.response.data && err.response.data.error) || err.message || 'Discovery failed'
-			} finally {
-				this.discovering = false
-			}
-		},
-
-		/**
-		 * @param {object} candidate discovery row
-		 */
-		selectCandidate(candidate) {
-			this.selected = candidate
-			this.onboardMsg = ''
-		},
-
-		async runOnboard() {
-			if (!this.selected || !this.selected.ip) {
-				return
-			}
-			this.onboarding = true
-			this.onboardMsg = `Hold HOME until ${this.selected.robotname || this.robotName} beeps — retrieving the local password…`
-			try {
-				const data = await api.onboard({
-					ip: this.selected.ip,
-					host: this.selected.ip,
-					name: this.selected.robotname || this.robotName,
-					blid: this.selected.blid,
-				})
-				if (data.error) {
-					this.onboardMsg = data.error
-					return
-				}
-				const robot = data.robot || {}
-				this.onboardMsg = `Onboarded ${robot.name || this.selected.robotname || this.robotName} at ${robot.host || this.selected.ip}.`
-				await this.store.refresh()
-			} catch (err) {
-				this.onboardMsg = (err.response && err.response.data && err.response.data.error) || err.message || 'Onboarding failed'
-			} finally {
-				this.onboarding = false
-			}
-		},
-
-		async previewRetention() {
-			this.retentionBusy = true
-			try {
-				this.retentionMsg = summarizePrune(await api.retentionPreview(), 'Would delete')
-			} catch (err) {
-				this.report(err.message || 'Retention preview failed', 'error')
-			} finally {
-				this.retentionBusy = false
-			}
-		},
-
-		async applyRetention() {
-			this.retentionBusy = true
-			try {
-				this.retentionMsg = summarizePrune(await api.retentionApply(), 'Deleted')
-			} catch (err) {
-				this.report(err.message || 'Retention prune failed', 'error')
-			} finally {
-				this.retentionBusy = false
-			}
 		},
 	},
 }

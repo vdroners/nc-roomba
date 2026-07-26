@@ -5,9 +5,16 @@ import { ageSeconds } from '../utils/format.js'
 import { decoratedError, hasFault, isConflict, isStale } from '../utils/errorDecoder.js'
 
 /** Poll cadence when SSE is unavailable (notify_push not required). */
-const POLL_MS = 5000
+const POLL_MS = 3000
+/**
+ * Safety-net poll cadence that runs even while SSE is "connected". SSE can
+ * silently stall behind a buffering proxy (the stream stays open but no frames
+ * arrive), which felt like a dead UI. A slow background poll guarantees the
+ * data still refreshes without waiting for the stream to error out.
+ */
+const SSE_BACKUP_POLL_MS = 6000
 /** Consecutive SSE failures tolerated before falling back to polling. */
-const SSE_MAX_FAILURES = 2
+const SSE_MAX_FAILURES = 1
 /** Client-side live timeline cap — history detail reads the persisted events. */
 const MAX_LIVE_EVENTS = 60
 
@@ -22,6 +29,8 @@ const MAX_LIVE_EVENTS = 60
 let liveSource = null
 let pollTimer = null
 let ageTimer = null
+/** Bound handler for tab focus/visibility so we can add and remove the same ref. */
+let focusHandler = null
 
 const OPTIMISTIC_PHASE = {
 	clean: 'run',
@@ -115,13 +124,20 @@ export const useRobotStore = defineStore('robot', {
 			if (options.live !== false) {
 				this.startLive()
 				this.startAgeTicker()
+				this.startFocusRefresh()
 			}
 		},
 
-		/** Prefer SSE; fall back to polling when the browser or proxy blocks it. */
+		/**
+		 * Prefer SSE for instant updates, but ALWAYS run a slow background poll
+		 * alongside it: SSE can stay "open" behind a buffering proxy while no
+		 * frames actually arrive, which reads as a frozen UI. The backup poll
+		 * keeps data honest; if SSE errors out we drop to the faster poll.
+		 */
 		startLive() {
+			// Safety-net poll runs regardless of SSE health.
+			this.startPolling(SSE_BACKUP_POLL_MS)
 			if (typeof EventSource !== 'function') {
-				this.startPolling()
 				return
 			}
 			this.stopLive()
@@ -147,6 +163,20 @@ export const useRobotStore = defineStore('robot', {
 			} catch {
 				this.startPolling()
 			}
+		},
+
+		/** Refresh immediately when the tab regains focus/visibility. */
+		startFocusRefresh() {
+			if (focusHandler || typeof document === 'undefined') {
+				return
+			}
+			focusHandler = () => {
+				if (document.visibilityState !== 'hidden') {
+					this.refresh()
+				}
+			}
+			document.addEventListener('visibilitychange', focusHandler)
+			window.addEventListener('focus', focusHandler)
 		},
 
 		/**
@@ -191,6 +221,11 @@ export const useRobotStore = defineStore('robot', {
 			if (ageTimer) {
 				clearInterval(ageTimer)
 				ageTimer = null
+			}
+			if (focusHandler && typeof document !== 'undefined') {
+				document.removeEventListener('visibilitychange', focusHandler)
+				window.removeEventListener('focus', focusHandler)
+				focusHandler = null
 			}
 			this.transport = 'idle'
 		},

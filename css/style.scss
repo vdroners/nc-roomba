@@ -78,8 +78,12 @@
 	display: inline-flex;
 	font-size: 0.85rem;
 	gap: 0.35rem;
+	// Cap chip width to the row and let long labels (e.g. "Wi-Fi -30 dBm
+	// (strong)") wrap inside the chip instead of spilling past its border.
+	max-width: 100%;
+	min-width: 0;
+	overflow-wrap: anywhere;
 	padding: 0.22rem 0.65rem;
-	white-space: nowrap;
 
 	&--name {
 		background: var(--nc-roomba-charcoal);
@@ -374,6 +378,7 @@
 		background: rgba(0, 0, 0, 0.28);
 		border: 1px solid rgba(196, 165, 116, 0.22);
 		border-radius: 10px;
+		min-width: 0;
 		padding: 0.55rem 0.65rem;
 
 		dt {
@@ -388,6 +393,8 @@
 			font-variant-numeric: tabular-nums;
 			font-weight: 650;
 			margin: 0.15rem 0 0;
+			// Big coverage numbers (e.g. "1,264,000 sq ft") must wrap, not clip.
+			overflow-wrap: anywhere;
 		}
 	}
 
@@ -587,16 +594,21 @@
 .nc-roomba-stats__item {
 	background: var(--color-background-hover);
 	border-radius: var(--border-radius-element, 8px);
+	// min-width:0 lets the grid cell shrink so long values wrap instead of
+	// forcing the box wider than its column / clipping.
+	min-width: 0;
 	padding: 0.4rem 0.6rem;
 
 	dt {
 		color: var(--color-text-maxcontrast);
 		font-size: 0.75rem;
+		overflow-wrap: anywhere;
 	}
 
 	dd {
 		font-weight: 600;
 		margin: 0;
+		overflow-wrap: anywhere;
 	}
 }
 
@@ -634,11 +646,18 @@
 
 .nc-roomba-list__title {
 	font-weight: 600;
+	overflow-wrap: anywhere;
 }
 
 .nc-roomba-list__meta {
 	color: var(--color-text-maxcontrast);
 	font-size: 0.8rem;
+	overflow-wrap: anywhere;
+}
+
+.nc-roomba-admin-pointer {
+	border-left: 3px solid color-mix(in srgb, var(--nc-roomba-brass) 40%, transparent);
+	padding-left: 0.6rem;
 }
 
 /* ─── Location map ───────────────────────────────────────────────────── */

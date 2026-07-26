@@ -222,9 +222,8 @@ describe('robot store', () => {
 			listeners.state({ data: JSON.stringify(stateDto({ phase: 'run', cycle: 'clean' })) })
 			expect(store.state.phase).toBe('run')
 
-			// A single hiccup must not tear the stream down; two must.
-			listeners.error()
-			expect(store.transport).toBe('sse')
+			// An SSE error now drops to polling immediately (SSE can stall
+			// silently, so we don't wait around before guaranteeing refresh).
 			listeners.error()
 			expect(store.transport).toBe('poll')
 			expect(close).toHaveBeenCalled()

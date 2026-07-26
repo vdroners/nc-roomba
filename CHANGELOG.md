@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-07-25
+
+### Changed
+
+- **Operator Settings tab no longer carries admin-only tools.** Robot Auto-
+  discover, hold-HOME onboarding and data-retention prune were duplicated in the
+  operator Settings view; they now live solely in Administration → NC Roomba
+  (where they already existed). Settings keeps the schedule and cleaning
+  preferences and points admins to the admin page for the rest.
+
+### Fixed
+
+- More clipping hardening: list titles/meta (long BLID/IP strings) now wrap
+  with `overflow-wrap` instead of overflowing their row.
+
+## [0.5.1] - 2026-07-25
+
+### Fixed
+
+- **UI felt frozen and needed a manual browser refresh.** SSE can stay "open"
+  behind a buffering proxy while no frames actually arrive. The store now runs a
+  slow background poll (6 s) alongside SSE as a safety net, drops to a faster
+  3 s poll the moment SSE errors (was: only after 2 failures), and refreshes
+  immediately when the tab regains focus/visibility. Data stays live without a
+  reload.
+- **Labels and values clipped out of their boxes.** Status-strip chips forced a
+  single line with no overflow handling, and stat / mission-metric values had no
+  wrapping. Chips now cap to the row width and wrap long labels; stat and metric
+  values wrap (`overflow-wrap` + `min-width:0`) instead of spilling past their
+  borders (e.g. firmware strings, large coverage numbers).
+
 ## [0.5.0] - 2026-07-25
 
 ### Fixed
