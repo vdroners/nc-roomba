@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.1] - 2026-07-26
+
+### Fixed
+
+- **`Not ready 15` looked like an error after docking.** The robot briefly
+  reports `notReady 15` (and similar) while it settles onto the dock and starts
+  charging; the code wasn't in the catalog, so the app showed a scary "No
+  catalog entry" message. Added entries for 15 / 16 / 31 (charging / just-docked
+  / docked-and-charging) with reassuring copy, and reworded the generic
+  unknown-code fallback to explain it's a benign transient that clears itself.
+
+### Added
+
+- **Twelve more achievements** (14 → 26): higher mission/run-hour/area tiers
+  (Half Century, Old Faithful, Household Legend, The Full Work Week, Master of
+  the House, Square Shooter, Ballpark Figure) plus playful wear-counter
+  milestones (Scrub Life, Cliff Daredevil, Featherweight Feet, The Perfectionist,
+  Clockwork Butler) — all derived from real robot counters.
+
 ## [0.9.0] - 2026-07-26
 
 ### Added

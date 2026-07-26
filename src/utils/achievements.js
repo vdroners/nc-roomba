@@ -107,6 +107,74 @@ const CATALOGUE = [
 		blurb: 'Cleaned on seven different days.',
 		metric: (m) => m.activeDays, goal: 7,
 	},
+
+	// ── More missions (higher + playful tiers) ────────────────────────────────
+	{
+		id: 'half-century', title: 'Half Century', icon: '🎯', tier: 'bronze',
+		blurb: 'Fifty missions down.',
+		metric: (m) => m.missionsTotal, goal: 50,
+	},
+	{
+		id: 'five-hundred-club', title: 'Old Faithful', icon: '🛎️', tier: 'silver',
+		blurb: 'Five hundred missions of loyal service.',
+		metric: (m) => m.missionsTotal, goal: 500,
+	},
+	{
+		id: 'legend', title: 'Household Legend', icon: '👑', tier: 'gold',
+		blurb: 'Two thousand missions — a true household legend.',
+		metric: (m) => m.missionsTotal, goal: 2000,
+	},
+
+	// ── More run time ─────────────────────────────────────────────────────────
+	{
+		id: 'work-week', title: 'The Full Work Week', icon: '📅', tier: 'silver',
+		blurb: 'Forty hours clocked — a proper work week.',
+		metric: (m) => m.runHours, goal: 40,
+	},
+	{
+		id: 'thousand-hours', title: 'Master of the House', icon: '🏆', tier: 'gold',
+		blurb: 'One thousand hours of service.',
+		metric: (m) => m.runHours, goal: 1000,
+	},
+
+	// ── More area ─────────────────────────────────────────────────────────────
+	{
+		id: 'square-shooter', title: 'Square Shooter', icon: '🟦', tier: 'bronze',
+		blurb: 'Cleaned 5,000 square feet in total.',
+		metric: (m) => m.areaSqft, goal: 5000,
+	},
+	{
+		id: 'ballpark', title: 'Ballpark Figure', icon: '⚾', tier: 'gold',
+		blurb: 'Cleaned 50,000 square feet — about an acre and change.',
+		metric: (m) => m.areaSqft, goal: 50000,
+	},
+
+	// ── Quirky wear-counter milestones (pure fun, real data) ──────────────────
+	{
+		id: 'scrubbz', title: 'Scrub Life', icon: '🧽', tier: 'bronze',
+		blurb: 'A thousand carpet/edge scrubs.',
+		metric: (m) => m.scrubs, goal: 1000,
+	},
+	{
+		id: 'daredevil', title: 'Cliff Daredevil', icon: '🧗', tier: 'silver',
+		blurb: 'Fifty thousand cliff-sensor saves — lives dangerously, survives every time.',
+		metric: (m) => m.cliffEvents, goal: 50000,
+	},
+	{
+		id: 'featherweight', title: 'Featherweight Feet', icon: '🪶', tier: 'gold',
+		blurb: 'Twelve thousand gentle wheel picks over the floors.',
+		metric: (m) => m.picks, goal: 12000,
+	},
+	{
+		id: 'perfectionist', title: 'The Perfectionist', icon: '💎', tier: 'silver',
+		blurb: 'Two hundred and fifty spotless, error-free missions.',
+		metric: (m) => m.errorFreeMissions, goal: 250,
+	},
+	{
+		id: 'fortnight-streak', title: 'Clockwork Butler', icon: '⏰', tier: 'gold',
+		blurb: 'Cleaned on fourteen different days.',
+		metric: (m) => m.activeDays, goal: 14,
+	},
 ]
 
 /**
@@ -164,6 +232,8 @@ export function achievementMetrics({ bbrun = {}, bbmssn = {}, missions = [] } = 
 		areaSqft: num(bbrun.sqft),
 		stuckPerHour,
 		cliffEvents: num(bbrun.nCliffsF) + num(bbrun.nCliffsR),
+		scrubs: num(bbrun.nScrubs),
+		picks: num(bbrun.nPicks),
 		errorFreeMissions,
 		hasComeback,
 		activeDays: days.size,

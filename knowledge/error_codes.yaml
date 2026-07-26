@@ -128,3 +128,15 @@ not_ready:
     title: "Pad / accessory issue"
     detail: "Accessory not ready (if equipped)."
     action: "Check accessories; N/A for bare 960."
+  "15":
+    title: "Charging — settling on the dock"
+    detail: "Seen briefly right after Alfred docks: it is charging and not yet ready to accept a new command. It clears on its own within a few seconds."
+    action: "No action needed — wait a moment and retry."
+  "16":
+    title: "Just docked / busy"
+    detail: "Robot is on the dock and finishing up; not ready for a new command yet."
+    action: "Give it a few seconds, then retry."
+  "31":
+    title: "Docked and charging"
+    detail: "Command not available while charging on the dock."
+    action: "Start a clean to undock, or wait until charged."

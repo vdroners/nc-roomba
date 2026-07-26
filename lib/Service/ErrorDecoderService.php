@@ -57,12 +57,15 @@ class ErrorDecoderService
 					'action' => (string) ($entry['action'] ?? ''),
 				];
 			}
+			// Unknown notReady codes are almost always benign, transient states
+			// (charging / just-docked / momentarily busy) that clear on their own,
+			// so frame it reassuringly rather than as a defect.
 			return [
 				'code' => $notReady,
 				'kind' => 'not_ready',
-				'title' => 'Not ready ' . $notReady,
-				'detail' => 'No catalog entry for this notReady code.',
-				'action' => 'Wait a moment and retry the command.',
+				'title' => 'Not ready yet',
+				'detail' => 'Alfred is briefly busy (often charging or settling on the dock) and is not ready for that command right now. This usually clears on its own.',
+				'action' => 'Wait a few seconds and try again.',
 			];
 		}
 		return [
