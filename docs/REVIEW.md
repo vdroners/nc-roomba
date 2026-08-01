@@ -1,6 +1,6 @@
 # NC Roomba — Improvements Review
 
-A plain-language tour of everything built so far (v0.1.0 → v0.4.0), what each
+A plain-language tour of everything built so far (v0.1.0 → v0.9.1), what each
 piece does, and the current live state of **Alfred** (the Roomba 960 on this
 install). For the machine-readable version see [CHANGELOG.md](../CHANGELOG.md);
 for design see [ARCHITECTURE.md](ARCHITECTURE.md); for day-to-day use see
@@ -83,9 +83,63 @@ Fixes:
 Result: association went from 0% to solid (strong link, thousands of RX
 packets).
 
-### v0.4.0 — Onboarding findings baked in (this review)
+### v0.4.0 — Onboarding findings baked in
 What we learned finishing Alfred's onboarding, turned into guidance so the next
-robot is easy. See the next section.
+robot is easy. See "The onboarding reality" below.
+
+### v0.5.x — Live-feed reliability + decluttered Settings
+SSE for instant updates with a slow background poll running alongside it (an SSE
+stream can stay open behind a buffering proxy while no frames arrive, which
+reads as a frozen UI). Operator **Settings** lost discovery / onboarding /
+retention — those are admin concerns and now live only in Administration → NC
+Roomba, with a signpost left behind. Preferences became real editable controls
+instead of a JSON dump.
+
+### v0.6.0 — History, lifetime rollup and achievements
+The History tab gained a lifetime-service rollup straight from the robot's own
+`bbrun` / `bbmssn` counters, a mission success-rate donut, CSV/JSON export, and
+a set of butler-themed **achievements** derived purely from data the robot
+already reports (`src/utils/achievements.js` — no server writes, fully unit
+tested).
+
+### v0.7.x — Visual system pass
+A proper token layer: radius / spacing / elevation scales instead of scattered
+magic numbers, a status **hero** card (battery ring, Wi‑Fi bars, bin glyph, next
+clean), staged entrance motion, and a fix for cleaning preferences that snapped
+back instead of persisting.
+
+### v0.8.0 — OpenClaw / Alfred integration
+Recent `[roomba]` alerts from the OpenClaw "Alfred" monitor are mirrored into
+the app, so the same events that page you also show up next to the robot.
+
+### v0.9.x — Live map + coverage
+The Location view draws the swept-area footprint (one translucent cell per
+covered 25 cm square, opacity encoding dwell) under the pose trail and heading
+cone, with a mission-theater fallback when the robot publishes no pose.
+
+### Post-0.9.1 — Correctness and accessibility pass
+Findings from an audit against the live robot, fixed:
+- **Mission history had never recorded anything.** The ingest job handed the
+  bridge envelope to the DTO consumer instead of the DTO, so
+  `nc_roomba_missions` held zero rows and every telemetry sample was all-NULL.
+  Five achievements (`streak-3`, `streak-7`, `fortnight-streak`, `comeback`)
+  were unreachable as a direct result.
+- **`dt` labels clipped.** Nextcloud core styles a bare `dt` as a fixed 130px
+  `inline-block`; that is wider than most tiles here, so labels overspilled
+  their neighbour or were cut outright. Replaced a one-off component patch with
+  a single app-wide reset.
+- **A foreign stylesheet on every page.** `Application::boot()` injected
+  `nc-roomba-theme.css` — a near byte-copy of NC-GCS's theme, defining 62
+  `--nc-gcs-*` tokens this app never referenced — into the `<head>` of every
+  Nextcloud page, login screen included. Deleted; the app's own tokens are
+  scoped to its two roots.
+- **Brass fails WCAG on a light theme.** #c4a574 measures 2.34:1 on white. The
+  accent now splits into a decorative brass, a 4.5:1 text ink and a 3:1 graphic
+  colour, with a light-theme-only override.
+- **Command failures were invisible.** The 3–6 s poll cleared the error before
+  it could be read; a failed command is now sticky until dismissed.
+- **`spot` removed.** dorita980 has no spot command for this generation and the
+  robot answers 501, so the button could only ever fail.
 
 ## The onboarding reality (important)
 
@@ -112,11 +166,15 @@ why you close the iRobot app.
 
 ## Alfred — current live state
 
-- **Model:** Roomba 960 (SKU `R960020`), name **Alfred**
+- **Model:** Roomba 960 (SKU `R960020`), firmware `v2.4.17-138`, name **Alfred**
 - **LAN:** `10.0.0.242:8883` (DHCP-reserved)
-- **BLID:** `3165811C32410750`
-- **Connection:** live over local MQTT, `connected: true`, RSSI ≈ −37 dBm,
+- **BLID / local MQTT password:** never published here. They are per-robot
+  secrets; read them from `.env` (gitignored) or the encrypted robot row, and
+  keep them out of this AGPL repo.
+- **Connection:** live over local MQTT, `connected: true`, RSSI ≈ −28 dBm,
   `error: 0`, pose available.
+- **Lifetime counters (from the robot):** 925 h 17 m run time, 1,803 missions
+  (250 clean / 1,045 cancelled / 508 failed), 2,825 sq ft, 1,071 stucks.
 - **Persistence:** credentials written to `.env` (gitignored) so the bridge
   **auto-connects on restart** — verified by fully recreating the container; it
   came up connected with no hold-HOME and no app. For belt-and-suspenders, also

@@ -10,7 +10,6 @@ use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
-use OCP\Util;
 
 class Application extends App implements IBootstrap
 {
@@ -30,10 +29,20 @@ class Application extends App implements IBootstrap
 		$context->registerMiddleware(ForbiddenMiddleware::class);
 	}
 
+	/**
+	 * Required by IBootstrap — deliberately empty.
+	 *
+	 * This used to `Util::addStyle(self::APP_ID, 'nc-roomba-theme')`, which put
+	 * a nc_roomba stylesheet in the <head> of EVERY Nextcloud page (Files, the
+	 * login screen, other apps' settings). The app has no global styling to
+	 * contribute: its own tokens live in css/style.scss and are scoped to the
+	 * app's roots, loaded only by PageController / AdminSettings.
+	 *
+	 * Do NOT delete this method to "clean up" — IBootstrap declares it, and a
+	 * class that does not implement it fails at runtime in a way `php -l`
+	 * cannot see.
+	 */
 	public function boot(IBootContext $context): void
 	{
-		$context->injectFn(function (): void {
-			Util::addStyle(self::APP_ID, 'nc-roomba-theme');
-		});
 	}
 }

@@ -1,20 +1,27 @@
 [Unit]
 Description=NC Roomba Soft-AP Wi-Fi helper
-After=network-online.target NetworkManager.service
+After=network-online.target NetworkManager.service docker.service
 Wants=network-online.target
 
 [Service]
 Type=simple
 WorkingDirectory=/media/4TB/nc-roomba/wifi-helper
-EnvironmentFile=-/etc/nc-roomba-wifi-helper.env
+# REQUIRED (no leading '-'): the file carries ROOMBA_WIFI_HELPER_TOKEN. The
+# service refuses to start without a token, so a missing file must fail loudly
+# here rather than silently starting an unauthenticated root HTTP service.
+EnvironmentFile=/etc/nc-roomba-wifi-helper.env
 Environment=NODE_ENV=production
-# Bind on all interfaces so Docker (host.docker.internal) can reach us; lock with TOKEN.
-Environment=ROOMBA_WIFI_HELPER_BIND=0.0.0.0
+# No ROOMBA_WIFI_HELPER_BIND: the default binds 127.0.0.1 plus the docker0
+# address, which is what `host.docker.internal` resolves to inside the bridge
+# container. Do NOT set 0.0.0.0 — that publishes a root service to the LAN.
 Environment=ROOMBA_WIFI_HELPER_PORT=8091
+Environment=ROOMBA_WIFI_HELPER_DOCKER_IFACE=docker0
 Environment=ROOMBA_WIFI_IFACE=wlp2s0
 ExecStart=/home/vdroners/.nvm/versions/node/v24.18.0/bin/node /media/4TB/nc-roomba/wifi-helper/index.js
 Restart=on-failure
 RestartSec=3
+# Exit 78 (EX_CONFIG) is "no token configured" — restarting cannot fix it.
+RestartPreventExitStatus=78
 # Needs nmcli / iw / ip for Soft-AP join.
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW

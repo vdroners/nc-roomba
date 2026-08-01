@@ -9,10 +9,13 @@
 		:transport="store.transport"
 		:can-admin="store.canAdmin"
 		:error="store.error"
+		:action-error="store.actionError"
+		:action-error-for="store.actionErrorFor"
 		:tab="tab"
 		@update:tab="onTab"
 		@open-drawer="store.openDrawer()"
 		@close-drawer="store.closeDrawer()"
+		@dismiss-action-error="store.dismissActionError()"
 		@retry-connect="store.connectTest()">
 		<NcNoteCard v-if="!store.canOperate" type="warning" heading="Read-only access">
 			Controlling the robot needs the <code>roomba-operators</code> group (or an

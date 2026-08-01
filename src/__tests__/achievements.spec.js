@@ -73,6 +73,32 @@ describe('achievements', () => {
 		expect(a['comeback'].unlocked).toBe(true)
 	})
 
+	it('unlocks the mission-row badges only once real rows exist', () => {
+		// Until the ingest bug was fixed, nc_roomba_missions had zero rows, so
+		// every badge derived from recorded missions was permanently locked.
+		// (clean-sweep is NOT one of them: errorFreeMissions is floored by the
+		// robot's own bbmssn.nMssnOk, so it unlocks with no rows at all.)
+		const counters = { bbrun: { hr: 925, min: 17 }, bbmssn: { nMssn: 1803, nMssnOk: 250 } }
+		const empty = byId(evaluateAchievements({ ...counters, missions: [] }))
+		expect(empty['streak-3'].unlocked).toBe(false)
+		expect(empty['streak-7'].unlocked).toBe(false)
+		expect(empty['fortnight-streak'].unlocked).toBe(false)
+		expect(empty['comeback'].unlocked).toBe(false)
+		expect(empty['clean-sweep'].unlocked).toBe(true)
+
+		const DAY = 86400
+		const base = Date.parse('2026-07-31T10:00:00Z') / 1000
+		const missions = []
+		for (let i = 0; i < 16; i++) {
+			missions.push({ id: 100 - i, started_at: base - (i * DAY), error_code: i === 5 ? 6 : 0 })
+		}
+		const filled = byId(evaluateAchievements({ ...counters, missions }))
+		expect(filled['streak-3'].unlocked).toBe(true)
+		expect(filled['streak-7'].unlocked).toBe(true)
+		expect(filled['fortnight-streak'].unlocked).toBe(true)
+		expect(filled['comeback'].unlocked).toBe(true)
+	})
+
 	it('summarizes unlocked vs total', () => {
 		const s = achievementSummary(evaluateAchievements(ALFRED))
 		expect(s.total).toBeGreaterThan(10)

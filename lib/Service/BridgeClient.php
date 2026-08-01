@@ -38,10 +38,58 @@ class BridgeClient
 		return $this->request('GET', '/health');
 	}
 
-	/** @return array{ok:bool,status:int,body:?array,raw:string,error:?string} */
+	/**
+	 * Robot state, with the bridge's envelope already unwrapped.
+	 *
+	 * `/state` answers `{ok, needs_attention, state:{phase, cycle, battery_pct,
+	 * pose, …}}`, so `body` here is the INNER DTO, not the wrapper. This is
+	 * deliberate and load-bearing.
+	 *
+	 * Unwrapping used to be each caller's job, and one caller forgot:
+	 * `TelemetrySampleJob` handed the wrapper to `MissionService::ingestState()`,
+	 * which reads `phase`/`cycle`/`battery_pct` off the top level. They were all
+	 * absent, so `$phase` became `''`, `$cycle` fell to its `?? 'none'` default,
+	 * the "is a mission running?" test could never be true, and **no mission row
+	 * was ever created in the life of the project** — 516 telemetry rows written
+	 * with every meaningful column NULL, and every mission notification dead
+	 * behind the same branch. Nothing warned, because the wrapper *is* a valid
+	 * array.
+	 *
+	 * Doing it here means a caller cannot get it wrong. The routes nest
+	 * inconsistently — `/health` is flat, `/state` nests under `state`,
+	 * `/schedule` under `week` — which is exactly the trap; see `getSchedule()`.
+	 *
+	 * @return array{ok:bool,status:int,body:?array,raw:string,error:?string}
+	 */
 	public function getState(int $robotId = 1): array
 	{
-		return $this->request('GET', '/state', ['robot_id' => $robotId]);
+		$resp = $this->request('GET', '/state', ['robot_id' => $robotId]);
+		if (is_array($resp['body']) && is_array($resp['body']['state'] ?? null)) {
+			$resp['body'] = $resp['body']['state'];
+		}
+		return $resp;
+	}
+
+	/**
+	 * Drain the bridge's completed-mission journal.
+	 *
+	 * The bridge is the only component that watches the robot in real time, so
+	 * it is the authority on when a mission actually started and stopped.
+	 * Nextcloud samples on five-minute cron — measured gaps here run to a median
+	 * of 15 minutes and a maximum of 110, against a 28-minute average mission —
+	 * so reconstructing missions from samples alone drops short runs entirely.
+	 *
+	 * `since` is the last journal sequence Nextcloud stored, so a slow, restarted
+	 * or day-long-offline Nextcloud simply resumes where it left off.
+	 *
+	 * @return array{ok:bool,status:int,body:?array,raw:string,error:?string}
+	 */
+	public function getMissions(int $since = 0, int $limit = 100): array
+	{
+		return $this->request('GET', '/missions', [
+			'since' => max(0, $since),
+			'limit' => max(1, min(500, $limit)),
+		]);
 	}
 
 	/**
@@ -152,45 +200,6 @@ class BridgeClient
 	public function connectTest(int $robotId = 1): array
 	{
 		return $this->request('POST', '/connect-test', null, ['robot_id' => $robotId]);
-	}
-
-	/**
-	 * Proxy the bridge SSE stream to the current PHP output buffer.
-	 * Caller should have already sent SSE response headers.
-	 *
-	 * @return int HTTP status from upstream (0 on transport failure)
-	 */
-	public function proxyStream(int $robotId = 1, int $timeoutSeconds = 0): int
-	{
-		$url = $this->getBaseUrl() . '/stream?robot_id=' . $robotId;
-		$ch = curl_init($url);
-		if ($ch === false) {
-			return 0;
-		}
-		curl_setopt_array($ch, [
-			CURLOPT_HTTPHEADER => ['Accept: text/event-stream', 'Cache-Control: no-cache'],
-			CURLOPT_CONNECTTIMEOUT => self::CONNECT_TIMEOUT,
-			CURLOPT_TIMEOUT => $timeoutSeconds > 0 ? $timeoutSeconds : 0,
-			CURLOPT_WRITEFUNCTION => static function ($ch, string $chunk): int {
-				echo $chunk;
-				if (function_exists('ob_flush')) {
-					@ob_flush();
-				}
-				flush();
-				return strlen($chunk);
-			},
-			CURLOPT_FOLLOWLOCATION => false,
-		]);
-		$ok = curl_exec($ch);
-		$status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-		if ($ok === false) {
-			$this->logger->warning('BridgeClient SSE proxy failed: {err}', [
-				'err' => curl_error($ch),
-			]);
-			$status = 0;
-		}
-		curl_close($ch);
-		return $status;
 	}
 
 	/**

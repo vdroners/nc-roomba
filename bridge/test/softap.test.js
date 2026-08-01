@@ -14,16 +14,28 @@ test('softapProvision mock path returns blid/password and done status', async ()
 	const result = await manager.softapProvision({
 		home_ssid: 'Sheela 6',
 		home_pass: 'secret',
-		robot_ssid: 'Roomba-3165811C32410750',
+		robot_ssid: 'Roomba-1A2B3C4D5E6F7788',
 		discover: false,
 		connect: false,
 		name: 'Alfred',
 	})
 	assert.equal(result.ok, true)
-	assert.equal(result.blid, '3165811C32410750')
+	assert.equal(result.blid, '1A2B3C4D5E6F7788')
+	// The password is returned exactly once, here, so PHP can persist it.
 	assert.match(result.password, /^:1:/)
 	assert.equal(manager.getSoftapStatus().phase, 'done')
 	assert.equal(manager.getSoftapStatus().ok, true)
+
+	// ...and must never be readable from the status endpoint, which is served
+	// unauthenticated by the bridge and mirrored to /api/admin/setup/status.
+	const status = manager.getSoftapStatus()
+	assert.equal(status.detail.password, undefined)
+	assert.equal(status.detail.password_returned, true)
+	assert.equal(
+		JSON.stringify(status).includes(result.password),
+		false,
+		'soft-AP status must not carry the robot MQTT password',
+	)
 	manager.disconnect()
 })
 

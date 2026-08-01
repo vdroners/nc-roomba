@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace OCA\NcRoomba\Tests\Unit\Service;
 
 use OCA\NcRoomba\AppInfo\Application;
+use OCA\NcRoomba\Exception\SecretDecryptException;
 use OCA\NcRoomba\Service\AdminSecretCrypto;
 use OCP\IConfig;
 use OCP\Security\ICrypto;
@@ -107,5 +108,44 @@ class AdminSecretCryptoTest extends TestCase
 		$raw = $this->store[Application::APP_ID . ':robot_password'];
 		$this->assertStringStartsWith(AdminSecretCrypto::PREFIX, $raw);
 		$this->assertSame('abc123', $svc->get('robot_password'));
+	}
+
+	/**
+	 * A rotated instance secret must be an error, not a value: returning the
+	 * stored `enc:v1:...` string put the ciphertext on the wire as the MQTT
+	 * password (CONNACK 5) and into the robot's wlcfg.pass over Soft-AP.
+	 */
+	public function testDecryptFailureThrowsInsteadOfReturningCiphertext(): void
+	{
+		$svc = new AdminSecretCrypto($this->makeConfig(), $this->makeCrypto(), $this->makeLogger());
+		$stored = AdminSecretCrypto::PREFIX . 'NOT-A-FAKE-CIPHERTEXT';
+
+		try {
+			$svc->decrypt($stored, 'robot_password');
+			$this->fail('decrypt() must throw when the payload will not decrypt');
+		} catch (SecretDecryptException $e) {
+			$this->assertStringNotContainsString('NOT-A-FAKE-CIPHERTEXT', $e->getMessage());
+			$this->assertStringNotContainsString(AdminSecretCrypto::PREFIX, $e->getMessage());
+			$this->assertStringContainsString('re-enter it in Admin settings', $e->getMessage());
+			$this->assertSame('robot_password', $e->getSecretKey());
+		}
+	}
+
+	public function testGetThrowsOnUndecryptableStoredValue(): void
+	{
+		$svc = new AdminSecretCrypto($this->makeConfig(), $this->makeCrypto(), $this->makeLogger());
+		$this->store[Application::APP_ID . ':home_wifi_password'] = AdminSecretCrypto::PREFIX . 'rotated';
+
+		$this->expectException(SecretDecryptException::class);
+		$svc->get('home_wifi_password');
+	}
+
+	/** Legacy unprefixed plaintext still passes through untouched. */
+	public function testLegacyPlaintextStillPassesThroughAfterFailureHardening(): void
+	{
+		$svc = new AdminSecretCrypto($this->makeConfig(), $this->makeCrypto(), $this->makeLogger());
+		$this->store[Application::APP_ID . ':home_wifi_password'] = 'plain-passphrase';
+		$this->assertSame('plain-passphrase', $svc->get('home_wifi_password'));
+		$this->assertSame('', $svc->decrypt(''));
 	}
 }

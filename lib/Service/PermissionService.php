@@ -77,9 +77,4 @@ class PermissionService
 		return $user;
 	}
 
-	/** @return array{error: string, message: string} */
-	public function forbiddenJsonPayload(): array
-	{
-		return RoombaGroupAccess::forbiddenJsonPayload();
-	}
 }

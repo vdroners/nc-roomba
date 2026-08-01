@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace OCA\NcRoomba\Util;
 
 use OCA\NcRoomba\AppInfo\Application;
-use OCA\NcRoomba\Exception\ForbiddenException;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\TemplateResponse;
 use OCP\IConfig;
@@ -43,12 +42,6 @@ final class RoombaGroupAccess
 		return $groupManager->isInGroup($uid, $groupId);
 	}
 
-	public static function requireAccess(IUserSession $userSession, IGroupManager $groupManager, IConfig $config): void
-	{
-		if (!self::hasAccess($userSession, $groupManager, $config)) {
-			throw new ForbiddenException(self::FORBIDDEN_MESSAGE);
-		}
-	}
 
 	public static function forbiddenPageResponse(): TemplateResponse
 	{
@@ -61,12 +54,4 @@ final class RoombaGroupAccess
 		);
 	}
 
-	/** @return array{error: string, message: string} */
-	public static function forbiddenJsonPayload(): array
-	{
-		return [
-			'error' => 'forbidden',
-			'message' => self::FORBIDDEN_MESSAGE,
-		];
-	}
 }

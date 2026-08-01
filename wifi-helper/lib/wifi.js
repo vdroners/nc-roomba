@@ -130,7 +130,7 @@ async function waitAssociated(timeoutMs = 12_000) {
 async function scanWifi() {
 	if (process.env.ROOMBA_WIFI_HELPER_MOCK === '1') {
 		return [{
-			ssid: 'Roomba-3165811C32410750',
+			ssid: 'Roomba-1A2B3C4D5E6F7788',
 			bssid: '80:C5:F2:C4:15:DE',
 			chan: 1,
 			signal: 60,

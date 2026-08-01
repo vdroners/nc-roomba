@@ -60,15 +60,24 @@ test('mock actions move phase and cycle', async () => {
 	manager.disconnect()
 })
 
-test('spot starts a spot cycle and find leaves state alone', async () => {
+test('find leaves state alone', async () => {
 	const manager = mockManager()
-	await manager.action('spot')
-	assert.equal(manager.getState().cycle, 'spot')
-
+	await manager.action('clean')
 	const before = manager.getState().phase
 	const result = await manager.action('find')
 	assert.equal(result.ok, true)
 	assert.equal(manager.getState().phase, before)
+	manager.disconnect()
+})
+
+test('spot is not offered, because dorita980 cannot do it', async () => {
+	// The real robot answered 501 to every spot attempt for the life of the
+	// project: dorita980 v2's Local class implements neither `spot` nor
+	// `cleanSpot`. The mock DID implement it, which is exactly why the old
+	// suite was happy.
+	const manager = mockManager()
+	assert.ok(!('spot' in ACTIONS))
+	await assert.rejects(() => manager.action('spot'), (err) => err.status === 400)
 	manager.disconnect()
 })
 
@@ -78,13 +87,48 @@ test('unknown actions are rejected with a 400', async () => {
 	manager.disconnect()
 })
 
-test('every advertised action has at least one dorita980 method candidate', () => {
+test('every advertised action maps to a method the REAL dorita980 implements', () => {
+	// Bound to the installed library, not to the mock.
+	//
+	// The previous version asserted only `candidates.length > 0` — tautologically
+	// true — and so certified `spot`, which no dorita980 method backs; the real
+	// robot answered 501 to it for the life of the project while the mock, which
+	// *did* implement spot, kept the suite green.
+	//
+	// dorita980's Local is a factory that hangs its methods off the instance via
+	// Object.assign rather than a prototype, so there is nothing to introspect
+	// without opening a connection. Read the installed source instead: if the
+	// library renames or drops a command, this fails loudly.
+	const fs = require('node:fs')
+	const path = require('node:path')
+	const localSrc = fs.readFileSync(
+		path.join(__dirname, '..', 'node_modules', 'dorita980', 'lib', 'v2', 'local.js'),
+		'utf8',
+	)
+	const assignBlock = localSrc.slice(localSrc.indexOf('return Object.assign(client, {'))
+	const available = new Set([...assignBlock.matchAll(/^\s{4}(\w+):/gm)].map((m) => m[1]))
+
+	assert.ok(available.size > 10, 'failed to parse dorita980 method names — has its shape changed?')
+	assert.ok(available.has('clean'), 'sanity: dorita980 should expose clean()')
+
+	const orphans = []
 	for (const [name, candidates] of Object.entries(ACTIONS)) {
 		assert.ok(candidates.length > 0, `${name} has no method candidates`)
+		if (!candidates.some((m) => available.has(m))) {
+			orphans.push(`${name} -> [${candidates.join(', ')}]`)
+		}
 	}
+	assert.deepEqual(orphans, [], `actions with no real dorita980 method: ${orphans.join('; ')}`)
+
+	// And the reverse: spot must stay gone until the library grows it.
+	assert.ok(
+		!available.has('spot') && !available.has('cleanSpot'),
+		'dorita980 now implements spot — the action can be re-enabled',
+	)
+
 	assert.deepEqual(
 		Object.keys(ACTIONS).sort(),
-		['clean', 'dock', 'find', 'pause', 'resume', 'spot', 'start', 'stop'],
+		['clean', 'dock', 'find', 'pause', 'resume', 'start', 'stop'],
 	)
 })
 

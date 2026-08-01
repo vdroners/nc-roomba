@@ -6,7 +6,7 @@ BRIDGE_COMPOSE := docker compose -f "$(ROOT)docker-compose.bridge.yml"
 BRIDGE_NET := nc-roomba-net
 DATE ?= $(shell date +%F)
 
-.PHONY: build test deploy ship bridge-up bridge-down bridge-test \
+.PHONY: build test deploy ship bridge-up bridge-down bridge-test bridge-net-check \
 	bump-patch bump-minor gate-preflight gate-live gate-gui \
 	phpunit run-phpunit helper-install helper-test helper-up helper-down
 
@@ -41,11 +41,48 @@ _bump:
 
 # Prefer `.env` (ROOMBA_MOCK=0 for a real robot). Do NOT export ROOMBA_MOCK=1
 # here — a shell override wins over `.env` and silently puts the bridge into mock.
+# Containers that must be able to resolve the bridge.
+#
+# CRON_CONTAINER is not optional. Background jobs run in the cron container, not
+# in cloud_app, and TelemetrySampleJob is the only writer of mission history. It
+# was missing here, so cron could not resolve nc_roomba_bridge at all --
+# "Could not resolve host: nc_roomba_bridge" every five minutes, silently, while
+# the app itself worked fine because cloud_app *was* attached. Mission history
+# therefore never recorded anything. The same omission broke nc-litter.
+#
+# `docker network connect` does not survive a container recreate, so re-run
+# `make bridge-up` after recreating the cloud stack (or move these attachments
+# into the cloud compose file, which is the durable home for them).
+CRON_CONTAINER ?= cloud_cron
+
 bridge-up:
 	$(BRIDGE_COMPOSE) up -d --build
-	@docker network connect $(BRIDGE_NET) $(CONTAINER) 2>/dev/null \
-		|| echo "cloud_app already on $(BRIDGE_NET) (or not running)"
+	@for c in $(CONTAINER) $(CRON_CONTAINER); do \
+		if docker network connect $(BRIDGE_NET) $$c 2>/dev/null; then \
+			echo "attached $$c to $(BRIDGE_NET)"; \
+		else \
+			echo "$$c already on $(BRIDGE_NET) (or not running)"; \
+		fi; \
+	done
+	@$(MAKE) --no-print-directory bridge-net-check
 	@echo "nc_roomba_bridge up on $(BRIDGE_NET) (ROOMBA_MOCK from .env / compose default)"
+
+# Fails loudly if the cron container cannot reach the bridge -- the exact
+# condition that silently disabled mission history for the life of the project.
+bridge-net-check:
+	@ok=1; \
+	for c in $(CONTAINER) $(CRON_CONTAINER); do \
+		if ! docker ps --format '{{.Names}}' | grep -qx "$$c"; then \
+			echo "  skip $$c (not running)"; continue; \
+		fi; \
+		code=$$(docker exec $$c sh -c 'curl -s -m 5 -o /dev/null -w "%{http_code}" http://nc_roomba_bridge:8080/health' 2>/dev/null); \
+		if [ "$$code" = "200" ]; then \
+			echo "  OK   $$c can reach the bridge"; \
+		else \
+			echo "  FAIL $$c cannot reach nc_roomba_bridge (HTTP $$code)"; ok=0; \
+		fi; \
+	done; \
+	test $$ok -eq 1 || (echo "bridge unreachable from a required container -- mission history will not record" && exit 1)
 
 bridge-down:
 	$(BRIDGE_COMPOSE) down
@@ -120,7 +157,11 @@ deploy: build
 	fi
 	@echo "Deployed $(APP_ID) to $(CONTAINER):$(REMOTE)"
 
-ship: build bridge-up deploy gate-preflight
+# gate-gui is in the chain now that it is green and guards real regressions
+# (the dt reset, the contrast tokens, the sticky action error, and a check that
+# the global stylesheet injection never comes back). It had rotted to a failing
+# state precisely because nothing ran it.
+ship: build bridge-up deploy gate-preflight gate-gui
 	@echo "ship complete"
 
 gate-preflight:

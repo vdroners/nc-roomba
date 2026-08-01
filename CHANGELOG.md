@@ -5,6 +5,155 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.0] - 2026-07-31
+
+Mission History has never worked in any released version. Fixing the reported
+symptom turned into a full audit — three parallel adversarial passes over the
+backend, the bridge and the GUI, checked against the real robot — which found
+two blockers, a safety hazard, eleven majors and a long tail. nc-litter was
+cloned from this codebase, and nine of the ten bugs recently fixed there were
+still present here in the parent.
+
+Plan: [`docs/plans/nc-roomba-v0.10-history-and-audit.md`](docs/plans/nc-roomba-v0.10-history-and-audit.md)
+
+### Fixed — mission History
+
+- **History never recorded anything, since the initial commit.**
+  `TelemetrySampleJob` passed the bridge's response *envelope* into
+  `MissionService::ingestState()`, which expects the unwrapped DTO. `/state`
+  answers `{ok, needs_attention, state:{…}}`, so `phase`, `cycle` and
+  `battery_pct` were all read off the wrapper where they do not exist: `$phase`
+  became `''`, `$cycle` fell to its `?? 'none'` default, the "is a mission
+  running?" test was permanently false, and **no mission row was ever created**.
+  Every mission notification and Activity entry lived behind the same dead
+  branch. The database showed it plainly — 0 missions, 0 phase events, and 521
+  telemetry rows with every meaningful column NULL. Nothing warned, because the
+  envelope *is* a valid array. The unwrap now lives in `BridgeClient::getState()`
+  so no caller can get it wrong again.
+- **The cron container could not reach the bridge at all.** Background jobs run
+  in `cloud_cron`, but `bridge-up` only attached `cloud_app`, so
+  `nc_roomba_bridge` was NO_DNS from the one container that needed it. The same
+  omission was silently breaking nc-litter. `bridge-up` now attaches both, and
+  `make bridge-net-check` fails loudly if a required container cannot reach the
+  bridge.
+- **The sampler's guard could not detect a wrong-shaped payload** (`is_array()`
+  is true of the envelope). It now checks for a field every real DTO carries and
+  logs an error rather than recording empty samples, and a bridge it cannot
+  reach is a warning instead of a debug line.
+- **Missions are no longer reconstructed from cron sampling alone.** Measured
+  gaps on this install run to a median of 15 minutes and a maximum of 110,
+  against a 28-minute average mission, so short runs vanished entirely. Three
+  layers now: the bridge journals every completed mission with the exact MQTT
+  timings and Nextcloud drains it; the robot's own lifetime counter catches runs
+  neither side witnessed; and sampling continues as before. Rows record which
+  path produced them, so an unobserved mission is never dressed up as a measured
+  one.
+- **A running mission was missed when the robot reported `cycle: "quick"`** — the
+  check only accepted `clean` and `spot`, and survived on the phase check alone.
+- **History would have shown "0 sq ft" for every mission.** This 960 reports
+  `sqft` and `mssnM` as 0; the bridge derives estimates for exactly that reason
+  and the ingest ignored them.
+- The pose trail began each mission with the *previous* mission's final pose
+  (still sitting in the merged raw state), drawing a phantom line across the map
+  and adding a stray covered cell that inflated the area estimate.
+- Reading the last phase event loaded every phase row of the mission, on every
+  telemetry sample.
+
+### Fixed — safety
+
+- **`tools/roomba-live-gates.sh` was destructive against production.** It read
+  `ROOMBA_MOCK`, echoed it, and never used it in a conditional — while defaulting
+  to the live bridge. `make gate-live` would have started a real cleaning mission
+  and overwritten the robot's weekly schedule. Mocked-ness is now read from the
+  bridge itself and every mutating gate is skipped unless the bridge really is a
+  mock, or the operator opts in explicitly.
+
+### Fixed — security
+
+- **`/api/alfred/alerts` had no permission check** — the only such route of 23,
+  so all ~130 users on this instance could read the operator alert feed. Its
+  admin-configured log path is also now confined to the Nextcloud config and data
+  trees, and tail-read instead of slurped, closing an admin-parameterised
+  arbitrary-file read.
+- **Robot-scoped routes answered for robots that do not exist.**
+  `GET /api/robots/999/state` returned HTTP 200 with the real robot's live
+  telemetry relabelled, and an action on a bogus id would have commanded the real
+  robot and filed the audit row under it. `connectTest()` and `upsertRobot()`
+  silently fell back to — and could overwrite — the primary robot.
+- **`AdminSecretCrypto::decrypt()` returned the ciphertext on failure.** After a
+  Nextcloud `secret` rotation the bridge would have been handed `enc:v1:…` as the
+  MQTT password and the operator told to physically re-onboard a robot whose
+  credentials were fine; the same value would have been pushed to the robot's
+  `wlcfg.pass` over Soft-AP. It now throws, and callers say what actually
+  happened.
+- **A retention of 0 deleted everything.** The cutoff came out one second in the
+  *future*, so a prune took every mission, sample and audit row including ones
+  written moments earlier — and 0 is what an admin types meaning "keep forever".
+  Retention of 0 now keeps everything, the cutoff can never come within an hour
+  of now, telemetry belonging to retained or open missions is protected, and the
+  batch caps are consistent (previously the mission scan stopped at 10 000 while
+  the deletes did not, orphaning phase events).
+- **The Soft-AP provision reported success it had not verified**, and saved the
+  fabricated credentials over the working ones.
+- **The wifi-helper failed open**: a missing env file silently left a root HTTP
+  service, able to reconfigure the host's Wi-Fi, unauthenticated on the LAN. It
+  now refuses to start without a token, binds loopback by default, compares in
+  constant time, and no longer accepts the token from the query string.
+- **The robot's MQTT password was served from the Soft-AP status endpoint** for
+  the lifetime of the process.
+
+### Fixed — correctness
+
+- **The SSE route was broken four ways**: the body was written before the headers
+  (so the Content-Type stayed `text/html` and browsers refused the stream, with
+  eleven "headers already sent" warnings per request), the frame was built with
+  single quotes so `\n` reached the wire as a literal backslash-n, every call
+  pinned an Apache worker for ~25 seconds before timing out, and it could deliver
+  two different DTO shapes in one stream. It is now a single well-formed enriched
+  frame with a `retry:` hint.
+- **`spot` never worked.** dorita980 implements neither `spot` nor `cleanSpot`,
+  so the real robot answered 501 every time — while the mock implemented it and
+  the test that named the invariant asserted only that the candidate list was
+  non-empty. Removed from the action set, the API and the README.
+- Pagination reported the size of the page just fetched as the total.
+
+### Fixed — interface
+
+- **Labels were clipped.** Nextcloud's `core/css/server.css` forces a fixed 130px
+  width and `nowrap` on a bare `dt`; the app compensated in exactly one place out
+  of the ten tiles that clip. Replaced with one app-wide reset.
+- The store replaced state wholesale rather than merging, so a partial frame
+  blanked rendered fields; a single normal EventSource close abandoned SSE
+  permanently; and a failed command's error was wiped by the next 3-second poll.
+- **A stylesheet was injected into every Nextcloud page** — Files, Talk,
+  Settings, all of them — from `boot()`. It was a near byte-copy of the NC-GCS
+  theme, declared 62 `--nc-gcs-*` tokens this app never reads, and collided with
+  nc-litter over a shared `:root` variable. Deleted.
+- Accent contrast on the light theme (the active one here) has been corrected.
+
+### Added
+
+- Persisted mission journal in the bridge (`GET /missions?since=`), surviving
+  container rebuilds, with idempotent draining and automatic re-sync if the
+  journal is ever reset.
+- A lifetime baseline is recorded at first run, so stats and streak achievements
+  score from a known point rather than against a robot with 1,803 missions
+  behind it. A repair step purged the 518 empty telemetry rows the ingest bug
+  produced.
+- **The Alfred monitors are actually scheduled now.** Both this app's and
+  nc-litter's monitor scripts existed but nothing ever ran them, so the in-app
+  alert card was permanently empty and no proactive Talk alert had ever been
+  sent. Both now run on the same five-minute timer pattern as the other Alfred
+  jobs.
+- Tests bound to reality rather than to the code's assumptions — which is why
+  all of the above survived a green suite. There was no test of `BridgeClient`,
+  none of `MissionService`, and none of either background job. Added: a
+  regression that fails on the envelope shape, an action test that reads the
+  *installed* dorita980 source and fails both if a command we advertise is
+  missing and if `spot` ever becomes available, the retention arithmetic pinned
+  directly, and journal tests for restart, corruption and repeated draining.
+  Suites: phpunit 15 → 37, bridge 28 → 36, wifi-helper 8 → 23, vitest 42 → 47.
+
 ## [0.9.1] - 2026-07-26
 
 ### Fixed

@@ -14,8 +14,13 @@ robot publishes pose.
 
 ## Features
 
-- **Factory Soft-AP setup wizard** (960/980 class) — join home Wi‑Fi without the iRobot app
-- Start / pause / resume / stop / dock / spot / find
+- Start / pause / resume / stop / dock / find (`spot` is **not** supported on
+  this generation — dorita980 has no spot command and the robot answers 501)
+- Hold-HOME credential retrieval — BLID + local MQTT password with **no iRobot app**
+- **Factory Soft-AP setup wizard** (960/980 class) — best-effort fallback, *not*
+  the recommended path: a 960's Soft-AP frequently associates but serves no
+  setup service, so provisioning stalls. See
+  [`docs/OPERATOR.md`](docs/OPERATOR.md) — hold-HOME is the path that works
 - Auto discover (LAN `:8883` scan + UDP) for IP / BLID
 - Live status strip (battery, bin, Wi‑Fi, phase)
 - **Mission stage** — realtime phase animation + coverage / duration counters
@@ -59,8 +64,11 @@ make gate-gui
 make gate-live ROOMBA_MOCK=1        # live gates without a robot
 ```
 
-Admin: Nextcloud → Administration → NC Roomba → **Factory setup wizard**
-(Soft-AP). Advanced: Auto discover + hold HOME. Operators must be in the
+Admin: Nextcloud → Administration → NC Roomba. Start with **Advanced → Auto
+discover → Retrieve credentials (hold HOME)** — the reliable path for a robot
+already on Wi‑Fi. The **Factory setup wizard** (Soft-AP) is the fallback for a
+robot that cannot be provisioned any other way, and is known to stall on the
+960; see [`docs/OPERATOR.md`](docs/OPERATOR.md). Operators must be in the
 `roomba-operators` group.
 
 ### Important env / networking notes

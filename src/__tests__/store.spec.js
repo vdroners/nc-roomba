@@ -93,6 +93,35 @@ describe('robot store', () => {
 		expect(store.phaseEvents).toHaveLength(1)
 	})
 
+	it('merges partial frames instead of replacing the whole DTO', () => {
+		// Frames are not uniformly shaped: SSE, poll and action-echo payloads
+		// each omit different keys. Assigning one wholesale blanked whatever it
+		// left out, so populated tiles flickered to "-".
+		const store = useRobotStore()
+		store.applyState(stateDto({ battery_pct: 86, maintenance_hints: [{ id: 'high_hours' }] }))
+
+		store.applyState({ phase: 'run', cycle: 'clean', updated_at: new Date().toISOString() })
+
+		expect(store.state.phase).toBe('run')
+		expect(store.state.battery_pct).toBe(86)
+		expect(store.state.name).toBe('Alfred')
+		expect(store.state.maintenance_hints).toHaveLength(1)
+		expect(store.state.bbmssn).toEqual({ nMssn: 12 })
+		expect(store.state.connection_health.mqtt).toBe('up')
+	})
+
+	it('treats a frame with no phase as "unchanged", not "cleared"', () => {
+		const store = useRobotStore()
+		store.applyState(stateDto({ phase: 'run', cycle: 'clean' }))
+		store.applyState({ battery_pct: 41 })
+
+		expect(store.state.phase).toBe('run')
+		expect(store.state.cycle).toBe('clean')
+		expect(store.state.battery_pct).toBe(41)
+		// No phase change, so no spurious extra timeline band.
+		expect(store.phaseEvents).toHaveLength(1)
+	})
+
 	it('ignores malformed state pushes', () => {
 		const store = useRobotStore()
 		store.applyState(stateDto())
@@ -130,8 +159,46 @@ describe('robot store', () => {
 
 		expect(result).toBe(null)
 		expect(store.state.phase).toBe('charge')
-		expect(store.error).toBe('robot is not connected')
+		expect(store.actionError).toBe('robot is not connected')
+		expect(store.actionErrorFor).toBe('clean')
 		expect(store.actionPending).toBe(null)
+	})
+
+	it('keeps a failed command visible across later polls until dismissed', async () => {
+		// The background poll runs every 3-6s and refresh() nulls `error` on
+		// success, so a command failure parked there was gone before it could be
+		// read. It lives in `actionError` and only an explicit dismiss clears it.
+		const store = useRobotStore()
+		await store.init({}, { live: false })
+		api.postAction.mockRejectedValue({ response: { data: { error: 'bridge said 501' } } })
+
+		await store.doAction('dock')
+		expect(store.actionError).toBe('bridge said 501')
+
+		// Three healthy polls later it is still on screen.
+		api.getState.mockResolvedValue(stateDto())
+		await store.refresh()
+		await store.refresh()
+		await store.refresh()
+		expect(store.error).toBe(null)
+		expect(store.actionError).toBe('bridge said 501')
+		expect(store.actionErrorFor).toBe('dock')
+
+		store.dismissActionError()
+		expect(store.actionError).toBe(null)
+		expect(store.actionErrorFor).toBe(null)
+	})
+
+	it('lets the next command supersede the previous failure', async () => {
+		const store = useRobotStore()
+		await store.init({}, { live: false })
+		api.postAction.mockRejectedValueOnce({ response: { data: { error: 'first failed' } } })
+		await store.doAction('dock')
+		expect(store.actionError).toBe('first failed')
+
+		api.postAction.mockResolvedValue({ ok: true })
+		await store.doAction('clean')
+		expect(store.actionError).toBe(null)
 	})
 
 	it('opens the connection drawer when an action fails with a conflict', async () => {
@@ -222,8 +289,17 @@ describe('robot store', () => {
 			listeners.state({ data: JSON.stringify(stateDto({ phase: 'run', cycle: 'clean' })) })
 			expect(store.state.phase).toBe('run')
 
-			// An SSE error now drops to polling immediately (SSE can stall
-			// silently, so we don't wait around before guaranteeing refresh).
+			// EventSource fires `error` on EVERY close, including the clean one
+			// that ends a healthy short-lived stream. A single close after a good
+			// frame must not abandon SSE for the rest of the session.
+			listeners.error()
+			expect(store.transport).toBe('sse')
+
+			// Only a run of frameless attempts gives up on the stream.
+			listeners.error()
+			listeners.error()
+			listeners.error()
+			expect(store.transport).toBe('sse')
 			listeners.error()
 			expect(store.transport).toBe('poll')
 			expect(close).toHaveBeenCalled()

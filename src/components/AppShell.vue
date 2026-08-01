@@ -22,6 +22,26 @@
 		</nav>
 
 		<main class="nc-roomba-main">
+			<!-- A failed command is sticky: the 3–6 s poll must not be able to
+			     scroll it away before the operator has read it, so it clears only
+			     on this dismiss (or when the next command supersedes it). -->
+			<NcNoteCard
+				v-if="actionError"
+				type="error"
+				:heading="actionErrorHeading"
+				data-testid="action-error">
+				<div class="nc-roomba-action-error">
+					<span class="nc-roomba-action-error__text">{{ actionError }}</span>
+					<NcButton
+						type="tertiary"
+						data-testid="action-error-dismiss"
+						aria-label="Dismiss this command failure"
+						@click="$emit('dismiss-action-error')">
+						Dismiss
+					</NcButton>
+				</div>
+			</NcNoteCard>
+
 			<NcNoteCard v-if="error" type="error" :heading="'Something went wrong'">
 				{{ error }}
 			</NcNoteCard>
@@ -39,7 +59,7 @@
 </template>
 
 <script>
-import { NcNoteCard } from '@nextcloud/vue'
+import { NcButton, NcNoteCard } from '@nextcloud/vue'
 
 import ConnectionHealthDrawer from './ConnectionHealthDrawer.vue'
 import StatusStrip from './StatusStrip.vue'
@@ -58,7 +78,7 @@ const TABS = [
 export default {
 	name: 'AppShell',
 
-	components: { ConnectionHealthDrawer, NcNoteCard, StatusStrip },
+	components: { ConnectionHealthDrawer, NcButton, NcNoteCard, StatusStrip },
 
 	props: {
 		state: {
@@ -101,6 +121,16 @@ export default {
 			type: String,
 			default: null,
 		},
+		/** Sticky message from the last failed operator command. */
+		actionError: {
+			type: String,
+			default: null,
+		},
+		/** Which action produced `actionError`, for the heading. */
+		actionErrorFor: {
+			type: String,
+			default: null,
+		},
 	},
 
 	data() {
@@ -108,6 +138,11 @@ export default {
 	},
 
 	computed: {
+		actionErrorHeading() {
+			return this.actionErrorFor
+				? `“${this.actionErrorFor}” did not go through`
+				: 'That command did not go through'
+		},
 		isCleaning() {
 			if (!this.state) {
 				return false

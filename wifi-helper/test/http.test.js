@@ -65,14 +65,14 @@ test('health + token-gated scan/provision in mock mode', async () => {
 		assert.ok(scan.json.networks.some((n) => /^Roomba-/.test(n.ssid)))
 
 		const prov = await request(server, 'POST', '/wifi/softap/provision', {
-			robot_ssid: 'Roomba-3165811C32410750',
+			robot_ssid: 'Roomba-1A2B3C4D5E6F7788',
 			ssid: 'Sheela 6',
 			pass: 'secret',
 			join: true,
 			leave: true,
 		}, { 'x-roomba-helper-token': 'test-token' })
 		assert.equal(prov.status, 200)
-		assert.equal(prov.json.blid, '3165811C32410750')
+		assert.equal(prov.json.blid, '1A2B3C4D5E6F7788')
 		assert.match(prov.json.password, /^:1:/)
 	} finally {
 		await new Promise((r) => server.close(r))

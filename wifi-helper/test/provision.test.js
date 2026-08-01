@@ -14,14 +14,14 @@ const {
 const { channelToFreq, SOFTAP_SSID_RE } = require('../lib/wifi')
 
 test('SOFTAP_SSID_RE matches both factory AP prefixes', () => {
-	assert.ok(SOFTAP_SSID_RE.test('Roomba-3165811C32410750'))
-	assert.ok(SOFTAP_SSID_RE.test('iRobot-3165811C32410750'))
+	assert.ok(SOFTAP_SSID_RE.test('Roomba-1A2B3C4D5E6F7788'))
+	assert.ok(SOFTAP_SSID_RE.test('iRobot-1A2B3C4D5E6F7788'))
 	assert.equal(SOFTAP_SSID_RE.test('Sheela 6'), false)
 })
 
 test('blidFromSsid parses Roomba Soft-AP name', () => {
-	assert.equal(blidFromSsid('Roomba-3165811C32410750'), '3165811C32410750')
-	assert.equal(blidFromSsid('iRobot-3165811C32410750'), '3165811C32410750')
+	assert.equal(blidFromSsid('Roomba-1A2B3C4D5E6F7788'), '1A2B3C4D5E6F7788')
+	assert.equal(blidFromSsid('iRobot-1A2B3C4D5E6F7788'), '1A2B3C4D5E6F7788')
 	assert.equal(blidFromSsid('Sheela 6'), null)
 })
 
@@ -61,9 +61,9 @@ test('mock provisionSoftAp returns blid + password', async () => {
 	const result = await provisionSoftAp({
 		ssid: 'Sheela 6',
 		pass: 'secret',
-		robotSsid: 'Roomba-3165811C32410750',
+		robotSsid: 'Roomba-1A2B3C4D5E6F7788',
 	})
-	assert.equal(result.blid, '3165811C32410750')
+	assert.equal(result.blid, '1A2B3C4D5E6F7788')
 	assert.match(result.password, /^:1:/)
 	assert.equal(result.mock, true)
 	assert.ok(result.steps.length >= 3)

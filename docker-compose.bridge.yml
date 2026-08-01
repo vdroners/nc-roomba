@@ -18,6 +18,13 @@ services:
       # Host Soft-AP helper (systemd nc-roomba-wifi-helper on :8091).
       ROOMBA_WIFI_HELPER_URL: "${ROOMBA_WIFI_HELPER_URL:-http://host.docker.internal:8091}"
       ROOMBA_WIFI_HELPER_TOKEN: "${ROOMBA_WIFI_HELPER_TOKEN:-}"
+      # Completed-mission journal, drained by Nextcloud via GET /missions.
+      # On a volume on purpose: an in-memory buffer would be emptied by
+      # `docker compose up --build`, which is exactly when a mission is most
+      # likely to be lost.
+      ROOMBA_MISSION_LOG: "/data/missions.json"
+    volumes:
+      - roomba_bridge_data:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     # Host loopback only for gates/debug — not LAN-public.
@@ -33,3 +40,7 @@ services:
 networks:
   nc-roomba-net:
     name: nc-roomba-net
+
+volumes:
+  roomba_bridge_data:
+    name: nc_roomba_bridge_data

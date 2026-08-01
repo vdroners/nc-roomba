@@ -32,6 +32,14 @@ use OCP\AppFramework\Db\Entity;
  * @method void setBatteryEnd(?int $batteryEnd)
  * @method int getCreatedAt()
  * @method void setCreatedAt(int $createdAt)
+ * @method int|null getBridgeSeq()
+ * @method void setBridgeSeq(?int $bridgeSeq)
+ * @method string|null getSource()
+ * @method void setSource(?string $source)
+ * @method int|null getNMssnStart()
+ * @method void setNMssnStart(?int $nMssnStart)
+ * @method int|null getNMssnEnd()
+ * @method void setNMssnEnd(?int $nMssnEnd)
  */
 class Mission extends Entity implements JsonSerializable
 {
@@ -47,6 +55,12 @@ class Mission extends Entity implements JsonSerializable
 	protected $batteryStart;
 	protected $batteryEnd;
 	protected $createdAt;
+	/** Journal sequence when this mission came from the bridge (else null). */
+	protected $bridgeSeq;
+	/** 'bridge' | 'telemetry' | 'odometer' — how the row was obtained. */
+	protected $source;
+	protected $nMssnStart;
+	protected $nMssnEnd;
 
 	public function __construct()
 	{
@@ -58,6 +72,9 @@ class Mission extends Entity implements JsonSerializable
 		$this->addType('errorCode', 'integer');
 		$this->addType('batteryStart', 'integer');
 		$this->addType('batteryEnd', 'integer');
+		$this->addType('bridgeSeq', 'integer');
+		$this->addType('nMssnStart', 'integer');
+		$this->addType('nMssnEnd', 'integer');
 		$this->addType('createdAt', 'integer');
 	}
 
@@ -77,6 +94,15 @@ class Mission extends Entity implements JsonSerializable
 			'battery_start' => $this->batteryStart !== null ? (int) $this->batteryStart : null,
 			'battery_end' => $this->batteryEnd !== null ? (int) $this->batteryEnd : null,
 			'created_at' => (int) $this->createdAt,
+			// How this row was obtained, so the UI can be honest about it:
+			//   bridge    — the bridge watched both edges over MQTT; timings exact
+			//   telemetry — reconstructed from Nextcloud's periodic sampling
+			//   odometer  — inferred from the robot's own mission counter moving;
+			//               the run definitely happened, but nobody saw it start
+			//               or stop, so the times are bounds and not measurements
+			'source' => $this->source !== null ? (string) $this->source : null,
+			'n_mssn_start' => $this->nMssnStart !== null ? (int) $this->nMssnStart : null,
+			'n_mssn_end' => $this->nMssnEnd !== null ? (int) $this->nMssnEnd : null,
 		];
 	}
 }

@@ -11,10 +11,18 @@ use OCA\NcRoomba\Db\MissionPhaseEventMapper;
 use OCA\NcRoomba\Db\TelemetrySample;
 use OCA\NcRoomba\Db\TelemetrySampleMapper;
 use OCA\NcRoomba\Db\CommandAuditMapper;
+use OCA\NcRoomba\AppInfo\Application;
 use OCP\AppFramework\Db\DoesNotExistException;
+use OCP\IConfig;
+use Psr\Log\LoggerInterface;
 
 class MissionService
 {
+	/** appconfig key prefix: last bridge journal seq drained, per robot. */
+	private const CURSOR_PREFIX = 'mission_cursor_';
+	/** appconfig key prefix: last observed lifetime mission counter, per robot. */
+	private const ODOMETER_PREFIX = 'mission_odometer_';
+
 	public function __construct(
 		private MissionMapper $missions,
 		private MissionPhaseEventMapper $phases,
@@ -23,6 +31,9 @@ class MissionService
 		private ErrorDecoderService $errors,
 		private NotifyService $notify,
 		private RobotService $robots,
+		private BridgeClient $bridge,
+		private IConfig $config,
+		private LoggerInterface $logger,
 	) {
 	}
 
@@ -41,7 +52,8 @@ class MissionService
 		$rows = $this->missions->findByRobot($robotId, $limit, $offset);
 		return [
 			'items' => array_map(static fn (Mission $m) => $m->jsonSerialize(), $rows),
-			'total' => count($rows),
+			// The real row count, not the size of the page just fetched.
+			'total' => $this->missions->countByRobot($robotId),
 			'robot_id' => $robotId,
 		];
 	}
@@ -80,7 +92,11 @@ class MissionService
 		$pose = is_array($state['pose'] ?? null) ? $state['pose'] : [];
 
 		$open = $this->missions->findOpenMission($robotId);
-		$running = in_array($cycle, ['clean', 'spot'], true)
+		// Any cycle other than 'none' means the robot is on a job. The old list
+		// was ['clean','spot'] and missed the value this 960 actually reports
+		// while running -- 'quick' -- which only escaped notice because the phase
+		// check usually caught it too. It did not during hmUsrDock.
+		$running = ($cycle !== '' && $cycle !== 'none')
 			|| in_array($phase, ['run', 'hmMidMsn', 'hmPostMsn'], true);
 
 		if ($running && $open === null) {
@@ -93,6 +109,8 @@ class MissionService
 			$open->setErrorCode(0);
 			$open->setBatteryStart($battery);
 			$open->setCreatedAt($now);
+			$open->setSource('telemetry');
+			$open->setNMssnStart(self::intOrNull(($state['bbmssn'] ?? [])['nMssn'] ?? null));
 			$open = $this->missions->insert($open);
 			$this->appendPhase($open, $phase !== '' ? $phase : 'run', $cycle, 'telemetry');
 		}
@@ -118,22 +136,31 @@ class MissionService
 		$this->telemetry->insert($sample);
 
 		if ($open !== null) {
-			$events = $this->phases->findByMission((int) $open->getId());
-			$last = $events !== [] ? $events[array_key_last($events)] : null;
+			// Only the latest event matters here; this used to load every phase
+			// row of the mission on every single sample.
+			$last = $this->phases->findLatestForMission((int) $open->getId());
 			if ($phase !== '' && ($last === null || $last->getPhase() !== $phase || (string) $last->getCycle() !== $cycle)) {
 				$this->appendPhase($open, $phase, $cycle, 'telemetry');
 			}
 
 			$missionMeta = is_array($state['mission'] ?? null) ? $state['mission'] : [];
-			if (isset($missionMeta['sqft'])) {
-				$open->setSqft((int) $missionMeta['sqft']);
+			// This 960 reports sqft and mssnM as 0 for the whole mission, which is
+			// exactly why the bridge derives estimates from the swept-cell
+			// footprint and the elapsed clock. Prefer what the robot measured;
+			// fall back to the estimate rather than recording a confident 0 and
+			// notifying the operator that it "finished cleaning (0 sq ft)".
+			$sqft = self::firstPositive($missionMeta['sqft'] ?? null, $missionMeta['sqft_est'] ?? null);
+			if ($sqft !== null) {
+				$open->setSqft($sqft);
 			}
-			if (isset($missionMeta['mssn_m'])) {
-				$open->setMsnM((int) $missionMeta['mssn_m']);
+			$mins = self::firstPositive($missionMeta['mssn_m'] ?? null, $missionMeta['mission_m_est'] ?? null);
+			if ($mins !== null) {
+				$open->setMsnM($mins);
 			}
 
 			$ended = in_array($phase, ['charge', 'stop'], true) && in_array($cycle, ['none', ''], true);
 			if ($ended) {
+				$open->setNMssnEnd(self::intOrNull(($state['bbmssn'] ?? [])['nMssn'] ?? null));
 				$open->setEndedAt($now);
 				$open->setPhaseFinal($phase);
 				$open->setBatteryEnd($battery);
@@ -169,6 +196,192 @@ class MissionService
 		}
 	}
 
+	/**
+	 * Pull completed missions from the bridge's journal and record any we have
+	 * not already stored.
+	 *
+	 * This is the accurate path. The bridge watches MQTT continuously, so it
+	 * knows exactly when a mission began and ended; Nextcloud's own sampler runs
+	 * on five-minute cron with measured gaps up to 110 minutes against a
+	 * 28-minute average mission, and would otherwise miss short runs entirely
+	 * and mis-date the rest.
+	 *
+	 * Idempotent: each journal entry carries a monotonic `seq`, stored on the
+	 * mission row, so a redelivery or a crash between fetch and cursor-write
+	 * cannot duplicate a mission.
+	 *
+	 * @return array{fetched:int,recorded:int,cursor:int}
+	 */
+	public function drainBridgeMissions(int $robotId): array
+	{
+		$cursor = (int) $this->config->getAppValue(
+			Application::APP_ID,
+			self::CURSOR_PREFIX . $robotId,
+			'0',
+		);
+		$resp = $this->bridge->getMissions($cursor);
+		$body = is_array($resp['body'] ?? null) ? $resp['body'] : [];
+		$records = is_array($body['missions'] ?? null) ? $body['missions'] : [];
+
+		// A journal that has been reset (fresh volume, or the file was lost)
+		// restarts its sequence. Detect it and re-sync rather than silently
+		// ignoring every future mission because our cursor is ahead.
+		$nextSeq = (int) ($body['next_seq'] ?? 0);
+		if ($nextSeq > 0 && $nextSeq <= $cursor) {
+			$this->logger->warning(
+				'nc_roomba: bridge mission journal restarted (next_seq {next} <= cursor {cursor}); re-syncing',
+				['next' => $nextSeq, 'cursor' => $cursor],
+			);
+			$cursor = 0;
+			$resp = $this->bridge->getMissions(0);
+			$body = is_array($resp['body'] ?? null) ? $resp['body'] : [];
+			$records = is_array($body['missions'] ?? null) ? $body['missions'] : [];
+		}
+
+		$recorded = 0;
+		foreach ($records as $record) {
+			if (!is_array($record)) {
+				continue;
+			}
+			$seq = self::intOrNull($record['seq'] ?? null);
+			if ($seq === null) {
+				continue;
+			}
+			$cursor = max($cursor, $seq);
+			if ($this->missions->findByBridgeSeq($robotId, $seq) !== null) {
+				continue; // already stored
+			}
+			$this->recordBridgeMission($robotId, $seq, $record);
+			$recorded++;
+		}
+
+		$this->config->setAppValue(Application::APP_ID, self::CURSOR_PREFIX . $robotId, (string) $cursor);
+		return ['fetched' => count($records), 'recorded' => $recorded, 'cursor' => $cursor];
+	}
+
+	/**
+	 * @param array<string, mixed> $record a bridge journal entry
+	 */
+	private function recordBridgeMission(int $robotId, int $seq, array $record): void
+	{
+		$started = self::tsOrNull($record['started_at'] ?? null) ?? time();
+		$ended = self::tsOrNull($record['ended_at'] ?? null);
+		$error = (int) ($record['error_code'] ?? 0);
+
+		$mission = new Mission();
+		$mission->setRobotId($robotId);
+		$mission->setStartedAt($started);
+		$mission->setEndedAt($ended);
+		$mission->setCycle((string) ($record['cycle'] ?? 'clean'));
+		$mission->setPhaseFinal(isset($record['phase_final']) ? (string) $record['phase_final'] : null);
+		$mission->setErrorCode($error);
+		$mission->setResult($error !== 0 ? 'error' : 'complete');
+		$mission->setSqft(self::firstPositive($record['sqft'] ?? null, $record['sqft_est'] ?? null));
+		$mission->setMsnM(self::firstPositive($record['mssn_m'] ?? null, $record['mission_m_est'] ?? null));
+		$mission->setBatteryStart(self::intOrNull($record['battery_start'] ?? null));
+		$mission->setBatteryEnd(self::intOrNull($record['battery_end'] ?? null));
+		$mission->setNMssnStart(self::intOrNull($record['n_mssn_start'] ?? null));
+		$mission->setNMssnEnd(self::intOrNull($record['n_mssn_end'] ?? null));
+		$mission->setBridgeSeq($seq);
+		$mission->setSource('bridge');
+		$mission->setCreatedAt(time());
+		$mission = $this->missions->insert($mission);
+
+		$robot = $this->robots->getRobot($robotId);
+		$name = $robot?->getName() ?? 'the robot';
+		if ($error !== 0) {
+			$decoded = $this->errors->decode($error, 0);
+			$this->notify->missionError($name, $decoded['title'], $error);
+		} else {
+			$this->notify->missionComplete($name, (int) $mission->getId(), $mission->getSqft());
+		}
+	}
+
+	/**
+	 * Safety net: the robot counts its own missions, so if that counter moved
+	 * further than the missions we recorded, a run happened that nobody saw.
+	 *
+	 * This covers the gaps the other two paths cannot: the bridge restarting
+	 * mid-mission, or a mission that began and ended entirely between two cron
+	 * samples. The row is marked `source: odometer` and its boundaries are left
+	 * null, because we genuinely did not observe them -- far better than
+	 * inventing a start time and a duration that never happened.
+	 *
+	 * @param array<string, mixed> $state
+	 * @return int missions recorded
+	 */
+	public function reconcileOdometer(int $robotId, array $state): int
+	{
+		$counter = self::intOrNull(($state['bbmssn'] ?? [])['nMssn'] ?? null);
+		if ($counter === null) {
+			return 0;
+		}
+		$key = self::ODOMETER_PREFIX . $robotId;
+		$seen = $this->config->getAppValue(Application::APP_ID, $key, '');
+		if ($seen === '') {
+			// First observation: record the baseline, claim nothing retroactively.
+			// This robot has 1,803 lifetime missions that predate the app; they are
+			// unrecoverable as detail, and inventing rows for them would be a lie.
+			$this->config->setAppValue(Application::APP_ID, $key, (string) $counter);
+			return 0;
+		}
+
+		$previous = (int) $seen;
+		$this->config->setAppValue(Application::APP_ID, $key, (string) $counter);
+		if ($counter <= $previous) {
+			return 0; // counter reset or unchanged
+		}
+
+		// How many of the missions in that delta did we already capture?
+		$delta = $counter - $previous;
+		$accounted = $this->missions->countRecordedBetweenCounters($robotId, $previous, $counter);
+		$missing = $delta - $accounted;
+		if ($missing <= 0) {
+			return 0;
+		}
+
+		for ($i = 0; $i < min($missing, 10); $i++) {
+			$mission = new Mission();
+			$mission->setRobotId($robotId);
+			// started_at is NOT NULL in the schema, so it has to hold something;
+			// `source: odometer` plus a null ended_at is what tells the UI these
+			// bounds were never observed.
+			$mission->setStartedAt(time());
+			$mission->setEndedAt(null);
+			$mission->setCycle('clean');
+			$mission->setResult('unobserved');
+			$mission->setErrorCode(0);
+			$mission->setSource('odometer');
+			$mission->setNMssnStart($previous);
+			$mission->setNMssnEnd($counter);
+			$mission->setCreatedAt(time());
+			$this->missions->insert($mission);
+		}
+		$this->logger->info(
+			'nc_roomba: odometer moved {prev}->{now} but only {seen} missions were captured; recorded {missing} unobserved',
+			['prev' => $previous, 'now' => $counter, 'seen' => $accounted, 'missing' => min($missing, 10)],
+		);
+		return min($missing, 10);
+	}
+
+	private static function intOrNull(mixed $value): ?int
+	{
+		return is_numeric($value) ? (int) $value : null;
+	}
+
+	/** Accepts an ISO-8601 string or an epoch int. */
+	private static function tsOrNull(mixed $value): ?int
+	{
+		if (is_numeric($value)) {
+			return (int) $value;
+		}
+		if (is_string($value) && $value !== '') {
+			$ts = strtotime($value);
+			return $ts !== false ? $ts : null;
+		}
+		return null;
+	}
+
 	private function appendPhase(Mission $mission, string $phase, string $cycle, string $source): void
 	{
 		$ev = new MissionPhaseEvent();
@@ -181,16 +394,46 @@ class MissionService
 		$this->phases->insert($ev);
 	}
 
+	/** Rows are deleted in batches of this size, consistently across tables. */
+	private const RETENTION_BATCH = 1000;
+
 	/**
-	 * @return array{missions:int,telemetry:int,audit:int,cutoff:int}
+	 * The oldest timestamp retention is allowed to keep.
+	 *
+	 * A retention of 0 used to produce `time() + 1`, i.e. "delete everything,
+	 * including the sample written a second ago" -- and 0 is the natural thing
+	 * for an admin to type meaning "keep forever" (the settings field even has
+	 * `min="0"`). Treat a non-positive retention as "keep everything" and, as a
+	 * backstop, never let the cutoff come within an hour of now so a
+	 * misconfigured value cannot erase live data.
+	 */
+	public static function cutoffFor(int $retentionDays): ?int
+	{
+		if ($retentionDays <= 0) {
+			return null; // keep everything
+		}
+		return min(time() - ($retentionDays * 86400), time() - 3600);
+	}
+
+	/**
+	 * @return array{missions:int,telemetry:int,audit:int,cutoff:?int}
 	 */
 	public function retentionDryRun(int $retentionDays): array
 	{
-		$cutoff = $retentionDays <= 0 ? time() + 1 : time() - ($retentionDays * 86400);
-		$oldMissions = $this->missions->findEndedBefore($cutoff, 10000);
+		$cutoff = self::cutoffFor($retentionDays);
+		if ($cutoff === null) {
+			return [
+				'missions' => 0,
+				'telemetry' => 0,
+				'audit' => 0,
+				'cutoff' => null,
+				'retention_days' => $retentionDays,
+				'note' => 'retention disabled (0 days) — nothing is deleted',
+			];
+		}
 		return [
-			'missions' => count($oldMissions),
-			'telemetry' => $this->telemetry->countOlderThan($cutoff),
+			'missions' => $this->missions->countEndedBefore($cutoff),
+			'telemetry' => $this->telemetry->countOlderThan($cutoff, $this->missions->findIdsRetainedAt($cutoff)),
 			'audit' => $this->audit->countOlderThan($cutoff),
 			'cutoff' => $cutoff,
 			'retention_days' => $retentionDays,
@@ -198,24 +441,65 @@ class MissionService
 	}
 
 	/**
-	 * @return array{missions:int,telemetry:int,audit:int,cutoff:int}
+	 * @return array{missions:int,telemetry:int,audit:int,cutoff:?int}
 	 */
 	public function retentionApply(int $retentionDays): array
 	{
-		$cutoff = $retentionDays <= 0 ? time() + 1 : time() - ($retentionDays * 86400);
-		$old = $this->missions->findEndedBefore($cutoff, 10000);
-		$ids = array_map(static fn (Mission $m) => (int) $m->getId(), $old);
-		$this->phases->deleteByMissionIds($ids);
-		$missions = $this->missions->deleteOlderThan($cutoff);
-		$telemetry = $this->telemetry->deleteOlderThan($cutoff);
+		$cutoff = self::cutoffFor($retentionDays);
+		if ($cutoff === null) {
+			return [
+				'missions' => 0,
+				'telemetry' => 0,
+				'audit' => 0,
+				'cutoff' => null,
+				'retention_days' => $retentionDays,
+				'note' => 'retention disabled (0 days) — nothing is deleted',
+			];
+		}
+
+		// Delete in matched batches. Previously the mission scan was capped at
+		// 10 000 while the deletes were uncapped, so past that many old missions
+		// the phase events for the remainder were orphaned permanently.
+		$missionsDeleted = 0;
+		while (true) {
+			$batch = $this->missions->findEndedBefore($cutoff, self::RETENTION_BATCH);
+			if ($batch === []) {
+				break;
+			}
+			$ids = array_map(static fn (Mission $m) => (int) $m->getId(), $batch);
+			$this->phases->deleteByMissionIds($ids);
+			$this->telemetry->deleteByMissionIds($ids);
+			$missionsDeleted += $this->missions->deleteByIds($ids);
+		}
+
+		// Telemetry belonging to a mission that retention KEEPS (still open, or
+		// ended after the cutoff) must survive even if the sample itself is old
+		// -- otherwise a long mission that started before the cutoff loses its
+		// samples while the mission row remains, and its detail view renders empty.
+		$telemetry = $this->telemetry->deleteOlderThan($cutoff, $this->missions->findIdsRetainedAt($cutoff));
 		$audit = $this->audit->deleteOlderThan($cutoff);
+
 		return [
-			'missions' => $missions,
+			'missions' => $missionsDeleted,
 			'telemetry' => $telemetry,
 			'audit' => $audit,
 			'cutoff' => $cutoff,
 			'retention_days' => $retentionDays,
 		];
+	}
+
+	/**
+	 * @param mixed $primary the robot's own measurement
+	 * @param mixed $fallback the bridge's derived estimate
+	 */
+	private static function firstPositive($primary, $fallback): ?int
+	{
+		foreach ([$primary, $fallback] as $candidate) {
+			if (is_numeric($candidate) && (int) $candidate > 0) {
+				return (int) $candidate;
+			}
+		}
+		return null;
 	}
 
 	/**

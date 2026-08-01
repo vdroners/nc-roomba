@@ -109,6 +109,30 @@ app.get('/state', (req, res) => {
 	res.json({ ok: true, needs_attention: needsAttention(state), state })
 })
 
+/**
+ * Completed-mission journal, drained by Nextcloud.
+ *
+ * The bridge holds the only real-time view of the robot, so it knows exactly
+ * when a mission started and stopped. Nextcloud samples on five-minute cron
+ * (measured gaps: median 15 min, max 110) against a 28-minute average mission,
+ * so reconstructing missions from those samples alone misses short runs and
+ * mis-dates the rest. Instead the bridge journals each completed mission and
+ * Nextcloud pulls with `?since=<seq>`, picking up wherever it left off — it can
+ * be slow, restart, or be down for a day without losing one.
+ *
+ * `seq` is monotonic per journal file. `next_seq` lets a caller detect a journal
+ * that was reset (seq going backwards) and re-sync.
+ */
+app.get('/missions', (req, res) => {
+	const since = Number(req.query.since || 0) || 0
+	const limit = Number(req.query.limit || 100) || 100
+	res.json({
+		ok: true,
+		...manager.missionLog.summary(),
+		missions: manager.missionLog.since(since, limit),
+	})
+})
+
 // SSE: the app's live pipeline. Every push is the same normalized DTO that
 // GET /state returns, so the poll fallback and the stream stay interchangeable.
 app.get('/stream', (req, res) => {

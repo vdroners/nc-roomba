@@ -13,8 +13,16 @@ const POLL_MS = 3000
  * data still refreshes without waiting for the stream to error out.
  */
 const SSE_BACKUP_POLL_MS = 6000
-/** Consecutive SSE failures tolerated before falling back to polling. */
-const SSE_MAX_FAILURES = 1
+/**
+ * Consecutive SSE failures tolerated before giving up on the stream.
+ *
+ * An EventSource fires `error` on *every* close, including the ordinary
+ * close-then-reconnect that ends a healthy short-lived stream. At 1 a single
+ * normal cycle abandoned SSE permanently and the app spent the rest of the
+ * session on the 3 s poll. The counter resets on every received frame, so this
+ * only trips when several connection attempts in a row deliver nothing.
+ */
+const SSE_MAX_FAILURES = 5
 /** Client-side live timeline cap — history detail reads the persisted events. */
 const MAX_LIVE_EVENTS = 60
 
@@ -34,7 +42,6 @@ let focusHandler = null
 
 const OPTIMISTIC_PHASE = {
 	clean: 'run',
-	spot: 'run',
 	pause: 'pause',
 	resume: 'run',
 	stop: 'stop',
@@ -60,8 +67,24 @@ export const useRobotStore = defineStore('robot', {
 		/** @type {'idle'|'sse'|'poll'} which live pipeline is active */
 		transport: 'idle',
 		drawerOpen: false,
-		/** @type {string|null} */
+		/**
+		 * Transient read error (a failed poll / list fetch). Cleared by the next
+		 * successful read, which is correct: the condition it describes is gone.
+		 *
+		 * @type {string|null}
+		 */
 		error: null,
+		/**
+		 * Sticky failure from an operator *command*. Kept apart from `error`
+		 * because the background poll runs every 3–6 s and used to wipe the
+		 * message before anyone could read it. Only `dismissActionError()`
+		 * clears it — or the next command, which supersedes it.
+		 *
+		 * @type {string|null}
+		 */
+		actionError: null,
+		/** @type {string|null} the action `actionError` belongs to */
+		actionErrorFor: null,
 		/** @type {string|null} action currently in flight */
 		actionPending: null,
 		lastSeenAgeS: 0,
@@ -133,7 +156,21 @@ export const useRobotStore = defineStore('robot', {
 		 * Prefer SSE for instant updates, but ALWAYS run a slow background poll
 		 * alongside it: SSE can stay "open" behind a buffering proxy while no
 		 * frames actually arrive, which reads as a frozen UI. The backup poll
-		 * keeps data honest; if SSE errors out we drop to the faster poll.
+		 * keeps data honest; if SSE really is dead we drop to the faster poll.
+		 *
+		 * ── The server contract ──────────────────────────────────────────────
+		 * `GET /api/robots/{id}/stream` is a SHORT-LIVED stream, not a long-poll
+		 * that stays open for the session. It emits one well-formed enriched
+		 * `state` frame plus a `retry:` hint and then closes. The browser's
+		 * EventSource honours `retry:` and reconnects on its own, so the steady
+		 * state is a repeating frame → close → reconnect cycle.
+		 *
+		 * That matters because EventSource reports *every* close as `error`,
+		 * with no way to distinguish "server finished cleanly" from "server is
+		 * unreachable". So a close is only treated as a failure when no frame
+		 * arrived on that connection: `sseFailures` is reset by the `state`
+		 * listener, and it takes SSE_MAX_FAILURES *frameless* attempts in a row
+		 * before we give up. A tidy close after a good frame costs nothing.
 		 */
 		startLive() {
 			// Safety-net poll runs regardless of SSE health.
@@ -145,6 +182,8 @@ export const useRobotStore = defineStore('robot', {
 			try {
 				const source = new EventSource(api.streamUrl(this.robotId))
 				source.addEventListener('state', (event) => {
+					// A delivered frame proves the stream works. Whatever close
+					// follows it is the normal end of a short-lived stream.
 					this.sseFailures = 0
 					try {
 						this.applyState(JSON.parse(event.data))
@@ -250,34 +289,48 @@ export const useRobotStore = defineStore('robot', {
 		/**
 		 * Merge a state sample and append a live timeline band on phase change.
 		 *
-		 * @param {object|null} dto enriched state DTO
+		 * This is a MERGE, not a replace. Frames do not all carry the same keys:
+		 * the SSE enriched frame, the poll DTO and the body echoed back by an
+		 * action can each omit fields (`maintenance_hints`, `next_scheduled`,
+		 * `bbrun`/`bbmssn`, `pose_trail`…). Assigning the frame wholesale blanked
+		 * whatever the newest one happened to leave out, so tiles that had real
+		 * numbers a second ago flickered to "—".
+		 *
+		 * Merging is shallow on purpose: nested objects (`mission`, `bbrun`,
+		 * `connection_health`) are always emitted whole by the backend, so a
+		 * deep merge would keep stale members of a shrinking object instead.
+		 *
+		 * @param {object|null} dto enriched state DTO (may be partial)
 		 */
 		applyState(dto) {
 			if (!dto || typeof dto !== 'object') {
 				return
 			}
 			const previous = this.state
-			this.state = dto
-			this.lastSeenAgeS = ageSeconds(dto.updated_at)
-			const changed = !previous || previous.phase !== dto.phase || previous.cycle !== dto.cycle
-			if (changed && dto.phase) {
+			// Read phase/cycle/updated_at off the merged result, not the raw frame:
+			// a frame that omits them means "unchanged", not "cleared".
+			const next = { ...(previous || {}), ...dto }
+			this.state = next
+			this.lastSeenAgeS = ageSeconds(next.updated_at)
+			const changed = !previous || previous.phase !== next.phase || previous.cycle !== next.cycle
+			if (changed && next.phase) {
 				this.phaseEvents.push({
-					ts: Math.floor((Date.parse(dto.updated_at) || Date.now()) / 1000),
-					phase: dto.phase,
-					cycle: dto.cycle || null,
+					ts: Math.floor((Date.parse(next.updated_at) || Date.now()) / 1000),
+					phase: next.phase,
+					cycle: next.cycle || null,
 				})
 				if (this.phaseEvents.length > MAX_LIVE_EVENTS) {
 					this.phaseEvents.splice(0, this.phaseEvents.length - MAX_LIVE_EVENTS)
 				}
 			}
 			// A fresh mission starts its own timeline.
-			if (previous && previous.cycle !== 'none' && dto.cycle === 'none') {
+			if (previous && previous.cycle !== 'none' && next.cycle === 'none') {
 				this.phaseEvents = this.phaseEvents.slice(-1)
 			}
 		},
 
 		/**
-		 * @param {string} action clean|spot|pause|resume|stop|dock|find
+		 * @param {string} action clean|pause|resume|stop|dock|find
 		 * @returns {Promise<object|null>} server result, or null when it failed
 		 */
 		async doAction(action) {
@@ -287,6 +340,9 @@ export const useRobotStore = defineStore('robot', {
 			const rollbackPhase = this.state ? this.state.phase : null
 			this.actionPending = action
 			this.error = null
+			// A new command supersedes the previous command's verdict.
+			this.actionError = null
+			this.actionErrorFor = null
 			if (this.state && OPTIMISTIC_PHASE[action]) {
 				this.state = { ...this.state, phase: OPTIMISTIC_PHASE[action] }
 			}
@@ -298,8 +354,13 @@ export const useRobotStore = defineStore('robot', {
 				if (this.state) {
 					this.state = { ...this.state, phase: rollbackPhase }
 				}
-				this.error = errorMessage(err, `Could not ${action}`)
-				if (isConflict(this.state) || /conflict/i.test(this.error)) {
+				// Sticky, NOT `this.error`: refresh() nulls `error` on its next
+				// success, and the poll fires within 3–6 s, so putting a command
+				// failure there meant the operator never saw why the robot
+				// ignored them. This one waits for an explicit dismiss.
+				this.actionError = errorMessage(err, `Could not ${action}`)
+				this.actionErrorFor = action
+				if (isConflict(this.state) || /conflict/i.test(this.actionError)) {
 					this.drawerOpen = true
 				}
 				return null
@@ -410,6 +471,12 @@ export const useRobotStore = defineStore('robot', {
 
 		clearError() {
 			this.error = null
+		},
+
+		/** Operator acknowledged the last failed command. */
+		dismissActionError() {
+			this.actionError = null
+			this.actionErrorFor = null
 		},
 	},
 })

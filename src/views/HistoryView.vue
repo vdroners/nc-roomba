@@ -64,6 +64,8 @@
 							<span>{{ cycleLabel(mission) }}</span>
 							<span v-if="durationOf(mission)">· {{ durationOf(mission) }}</span>
 							<span v-if="mission.sqft">· {{ Number(mission.sqft).toLocaleString() }} sq ft</span>
+							<span v-if="batteryUsed(mission)">· {{ batteryUsed(mission) }}</span>
+							<span v-if="sourceNote(mission)" class="nc-roomba-history__source">· {{ sourceNote(mission) }}</span>
 						</span>
 					</button>
 				</li>
@@ -130,22 +132,49 @@ export default {
 			}
 			return mission.phases || mission.phase_events || []
 		},
+		/**
+		 * Detail rows, keyed to the columns `nc_roomba_missions` actually has
+		 * (see `Mission::jsonSerialize`): started_at, ended_at, cycle, sqft,
+		 * mssn_m, result, error_code, battery_start/end, source.
+		 *
+		 * @returns {Array<{label: string, value: string}>}
+		 */
 		detailStats() {
 			const mission = this.selected || {}
 			const rows = [
 				{ label: 'Started', value: timestampLabel(mission.started_at) || '—' },
 				{ label: 'Ended', value: timestampLabel(mission.ended_at) || 'in progress' },
 			]
-			if (mission.started_at && mission.ended_at) {
-				rows.push({ label: 'Duration', value: durationLabel(Number(mission.ended_at) - Number(mission.started_at)) })
+			const duration = this.durationOf(mission)
+			if (duration) {
+				rows.push({ label: 'Duration', value: duration })
 			}
-			if (mission.sqft !== undefined && mission.sqft !== null) {
+			// The robot reports 0 sq ft on this generation; the bridge substitutes
+			// an estimate, and 0 here means "never reported", not "cleaned nothing".
+			if (Number(mission.sqft) > 0) {
 				rows.push({ label: 'Area', value: `${Number(mission.sqft).toLocaleString()} sq ft` })
 			}
-			if (mission.error) {
-				rows.push({ label: 'Error', value: String(mission.error) })
+			if (Number.isFinite(Number(mission.battery_start)) && mission.battery_start !== null) {
+				const end = mission.battery_end
+				rows.push({
+					label: 'Battery',
+					value: end === null || end === undefined
+						? `${mission.battery_start}%`
+						: `${mission.battery_start}% → ${end}%`,
+				})
+			}
+			// The column is `error_code`; `mission.error` never existed on a row,
+			// so this panel could not show a fault even on a failed mission.
+			const code = Number(mission.error_code || 0)
+			if (code !== 0) {
+				const decoded = mission.decoded_error || {}
+				rows.push({ label: 'Error', value: decoded.title ? `${code} — ${decoded.title}` : String(code) })
 			}
 			rows.push({ label: 'Outcome', value: mission.result || mission.outcome || 'unknown' })
+			const source = this.sourceNote(mission)
+			if (source) {
+				rows.push({ label: 'Recorded', value: source })
+			}
 			return rows
 		},
 	},
@@ -195,6 +224,7 @@ export default {
 			if (!mission.ended_at) {
 				return 'open'
 			}
+			// MissionService writes exactly 'open' | 'complete' | 'error'.
 			const result = String(mission.result || mission.outcome || '')
 			return result === 'error' ? 'error' : 'complete'
 		},
@@ -216,12 +246,52 @@ export default {
 			return mission.cycle && mission.cycle !== 'none' ? mission.cycle : 'mission'
 		},
 
-		/** @param {object} mission */
+		/**
+		 * Prefer the robot's own mission-minutes counter over the wall clock
+		 * between our first and last sample: a telemetry-reconstructed row can
+		 * be minutes out at either edge, and `mssn_m` is what the robot measured.
+		 *
+		 * @param {object} mission
+		 * @returns {string}
+		 */
 		durationOf(mission) {
+			const minutes = Number(mission.mssn_m)
+			if (Number.isFinite(minutes) && minutes > 0) {
+				return durationLabel(minutes * 60)
+			}
 			if (mission.started_at && mission.ended_at) {
 				return durationLabel(Number(mission.ended_at) - Number(mission.started_at))
 			}
 			return ''
+		},
+
+		/**
+		 * @param {object} mission
+		 * @returns {string} e.g. "18% battery", or '' when either edge is missing
+		 */
+		batteryUsed(mission) {
+			const start = Number(mission.battery_start)
+			const end = Number(mission.battery_end)
+			if (!Number.isFinite(start) || !Number.isFinite(end)) {
+				return ''
+			}
+			const used = start - end
+			return used > 0 ? `${used}% battery` : ''
+		},
+
+		/**
+		 * How the row was obtained. `bridge` rows saw both edges over MQTT and
+		 * need no caveat; the other two are reconstructions and should say so
+		 * rather than presenting inferred times as measurements.
+		 *
+		 * @param {object} mission
+		 * @returns {string}
+		 */
+		sourceNote(mission) {
+			return {
+				telemetry: 'times sampled',
+				odometer: 'times inferred',
+			}[String(mission.source || '')] || ''
 		},
 
 		/**

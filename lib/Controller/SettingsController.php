@@ -7,6 +7,7 @@ namespace OCA\NcRoomba\Controller;
 use OCA\NcRoomba\AppInfo\Application;
 use OCA\NcRoomba\Db\Floorplan;
 use OCA\NcRoomba\Db\FloorplanMapper;
+use OCA\NcRoomba\Exception\RobotNotFoundException;
 use OCA\NcRoomba\Service\BridgeClient;
 use OCA\NcRoomba\Service\MissionService;
 use OCA\NcRoomba\Service\PermissionService;
@@ -33,10 +34,29 @@ class SettingsController extends Controller
 		parent::__construct(Application::APP_ID, $request);
 	}
 
+	/**
+	 * 404 body for a robot id with no row, or null when the robot exists.
+	 * Mirrors RobotController::notFound(); every robot-scoped method calls it
+	 * before touching the bridge, which ignores `robot_id` entirely.
+	 */
+	private function notFound(int $id): ?JSONResponse
+	{
+		if ($this->robots->robotExists($id)) {
+			return null;
+		}
+		return new JSONResponse(
+			['error' => 'robot_not_found', 'robot_id' => $id],
+			Http::STATUS_NOT_FOUND,
+		);
+	}
+
 	#[NoAdminRequired]
 	public function getSchedule(int $id): JSONResponse
 	{
 		$this->permissions->requireOperator();
+		if ($missing = $this->notFound($id)) {
+			return $missing;
+		}
 		$resp = $this->bridge->getSchedule($id);
 		$body = $resp['body'] ?? [];
 		$week = is_array($body['week'] ?? null) ? $body['week'] : $body;
@@ -53,6 +73,9 @@ class SettingsController extends Controller
 	public function setSchedule(int $id): JSONResponse
 	{
 		$user = $this->permissions->requireOperator();
+		if ($missing = $this->notFound($id)) {
+			return $missing;
+		}
 		$params = $this->request->getParams();
 		$week = is_array($params['week'] ?? null) ? $params['week'] : $params;
 		$resp = $this->bridge->setSchedule(is_array($week) ? $week : [], $id);
@@ -68,6 +91,9 @@ class SettingsController extends Controller
 	public function getPreferences(int $id): JSONResponse
 	{
 		$this->permissions->requireOperator();
+		if ($missing = $this->notFound($id)) {
+			return $missing;
+		}
 		$resp = $this->bridge->getPreferences($id);
 		return new JSONResponse([
 			'ok' => $resp['ok'],
@@ -80,6 +106,10 @@ class SettingsController extends Controller
 	#[NoAdminRequired]
 	public function alfredAlerts(): JSONResponse
 	{
+		// Operator-only, like every other route here: #[NoAdminRequired] only
+		// means "not admin-gated", it does not restrict to the operator group,
+		// and ForbiddenMiddleware formats exceptions rather than enforcing.
+		$this->permissions->requireOperator();
 		return new JSONResponse([
 			'ok' => true,
 			'alerts' => $this->robots->getAlfredAlerts(8),
@@ -90,6 +120,9 @@ class SettingsController extends Controller
 	public function setPreferences(int $id): JSONResponse
 	{
 		$this->permissions->requireOperator();
+		if ($missing = $this->notFound($id)) {
+			return $missing;
+		}
 		$params = $this->request->getParams();
 		$prefs = is_array($params['preferences'] ?? null) ? $params['preferences'] : $params;
 		$resp = $this->bridge->setPreferences(is_array($prefs) ? $prefs : [], $id);
@@ -135,14 +168,25 @@ class SettingsController extends Controller
 			$this->robots->setAlfredConfig($params['alfred']);
 		}
 		if (isset($params['blid'], $params['host'])) {
-			$this->robots->upsertRobot([
-				'name' => (string) ($params['name'] ?? 'Alfred'),
-				'blid' => (string) $params['blid'],
-				'password' => (string) ($params['password'] ?? ''),
-				'host' => (string) $params['host'],
-				'port' => (int) ($params['port'] ?? 8883),
-				'has_pose' => !empty($params['has_pose']),
-			], isset($params['robot_id']) ? (int) $params['robot_id'] : null);
+			// A supplied robot_id must name a real row. `0`/empty keeps the
+			// historical "primary robot" meaning; an unknown id is a 404, not a
+			// silent overwrite of whichever robot happens to be first.
+			$robotId = isset($params['robot_id']) ? (int) $params['robot_id'] : 0;
+			try {
+				$this->robots->upsertRobot([
+					'name' => (string) ($params['name'] ?? 'Alfred'),
+					'blid' => (string) $params['blid'],
+					'password' => (string) ($params['password'] ?? ''),
+					'host' => (string) $params['host'],
+					'port' => (int) ($params['port'] ?? 8883),
+					'has_pose' => !empty($params['has_pose']),
+				], $robotId > 0 ? $robotId : null);
+			} catch (RobotNotFoundException $e) {
+				return new JSONResponse(
+					['error' => 'robot_not_found', 'robot_id' => $e->getRobotId()],
+					Http::STATUS_NOT_FOUND,
+				);
+			}
 		}
 		return new JSONResponse(['ok' => true, 'settings' => $this->robots->adminBootstrap()]);
 	}
@@ -195,9 +239,8 @@ class SettingsController extends Controller
 	public function floorplan(int $id): JSONResponse
 	{
 		$this->permissions->requireAdmin();
-		$robot = $this->robots->getRobot($id);
-		if ($robot === null) {
-			return new JSONResponse(['error' => 'robot_not_found'], Http::STATUS_NOT_FOUND);
+		if ($missing = $this->notFound($id)) {
+			return $missing;
 		}
 		$file = $this->request->getUploadedFile('floorplan')
 			?? $this->request->getUploadedFile('file');

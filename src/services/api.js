@@ -36,7 +36,7 @@ export function streamUrl(robotId = DEFAULT_ROBOT_ID) {
 }
 
 /**
- * @param {string} action clean|spot|pause|resume|stop|dock|find
+ * @param {string} action clean|pause|resume|stop|dock|find
  * @param {number} [robotId]
  * @returns {Promise<object>} action result (audited server-side)
  */

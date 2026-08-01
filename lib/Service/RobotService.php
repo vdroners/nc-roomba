@@ -7,13 +7,23 @@ namespace OCA\NcRoomba\Service;
 use OCA\NcRoomba\AppInfo\Application;
 use OCA\NcRoomba\Db\Robot;
 use OCA\NcRoomba\Db\RobotMapper;
+use OCA\NcRoomba\Exception\RobotNotFoundException;
+use OCA\NcRoomba\Exception\SecretDecryptException;
+use OCA\NcRoomba\Util\ConfinedFileReader;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\IConfig;
 
 class RobotService
 {
 	/** @var list<string> */
-	public const ALLOWED_ACTIONS = ['clean', 'spot', 'pause', 'resume', 'stop', 'dock', 'find'];
+	/**
+	 * Actions the API accepts.
+	 *
+	 * `spot` was removed: dorita980 v2's Local class implements neither `spot`
+	 * nor `cleanSpot`, so the real robot answered 501 to every attempt. It was
+	 * advertised in the README and offered in the UI for the life of the project.
+	 */
+	public const ALLOWED_ACTIONS = ['clean', 'pause', 'resume', 'stop', 'dock', 'find'];
 
 	public function __construct(
 		private RobotMapper $robots,
@@ -104,25 +114,61 @@ class RobotService
 	 * Read the last few `[roomba]` alerts the OpenClaw monitor appended to its
 	 * JSONL tail (best-effort; empty when disabled or the file is absent).
 	 *
+	 * `alfred_alert_log` is an absolute path an admin types in, so it is confined
+	 * to the Nextcloud config/ and data/ trees before being opened — otherwise
+	 * this is an admin-parameterised arbitrary-file read reachable from the API.
+	 * The read is bounded to the tail window instead of slurping the whole log.
+	 *
 	 * @param int $limit
 	 * @return array<int,array{ts:string,text:string}>
 	 */
 	public function getAlfredAlerts(int $limit = 8): array
 	{
 		$cfg = $this->getAlfredConfig();
-		if (!$cfg['enabled'] || $cfg['alert_log'] === '' || !is_readable($cfg['alert_log'])) {
+		if (!$cfg['enabled'] || $cfg['alert_log'] === '') {
 			return [];
 		}
-		$lines = @file($cfg['alert_log'], FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
-		$lines = array_slice($lines, -max(1, $limit));
+		$path = ConfinedFileReader::confine($cfg['alert_log'], $this->alertLogRoots());
+		if ($path === null) {
+			return [];
+		}
 		$out = [];
-		foreach (array_reverse($lines) as $line) {
+		foreach (array_reverse(ConfinedFileReader::tail($path, max(1, $limit))) as $line) {
 			$row = json_decode($line, true);
 			if (is_array($row) && isset($row['text'])) {
 				$out[] = ['ts' => (string) ($row['ts'] ?? ''), 'text' => (string) $row['text']];
 			}
 		}
 		return $out;
+	}
+
+	/**
+	 * Directories the Alfred alert log is allowed to live in.
+	 *
+	 * The OpenClaw monitor writes into `<configdir>/nc_roomba/`, so the roots are
+	 * the app's own directory under the Nextcloud config and data trees — not
+	 * those trees wholesale, which would leave `config/config.php` (instance
+	 * secret, DB password) inside the confinement.
+	 *
+	 * @return list<string>
+	 */
+	private function alertLogRoots(): array
+	{
+		$parents = [];
+		// \OC::$configDir is the only exposed handle on the config directory;
+		// class_exists keeps this callable outside a booted Nextcloud (tests).
+		if (class_exists(\OC::class, false) && is_string(\OC::$configDir) && \OC::$configDir !== '') {
+			$parents[] = \OC::$configDir;
+		}
+		$dataDir = (string) $this->config->getSystemValue('datadirectory', '');
+		if ($dataDir !== '') {
+			$parents[] = $dataDir;
+		}
+		$roots = [];
+		foreach ($parents as $parent) {
+			$roots[] = rtrim($parent, '/') . '/' . Application::APP_ID;
+		}
+		return $roots;
 	}
 
 	/** @return Robot[] */
@@ -145,8 +191,23 @@ class RobotService
 		return $this->robots->findFirst();
 	}
 
+	/** True when a row with this id exists. Controllers 404 on false. */
+	public function robotExists(int $id): bool
+	{
+		return $this->getRobot($id) !== null;
+	}
+
 	/**
+	 * Create or update a robot.
+	 *
+	 * With `$id === null` this targets the primary robot (creating one when the
+	 * table is empty) — that is how onboarding and Soft-AP setup call it. With an
+	 * explicit `$id` the row must exist: the old behaviour silently redirected an
+	 * unknown id onto the primary robot, so `robot_id=999` overwrote Alfred's
+	 * credentials.
+	 *
 	 * @param array{name?:string,blid:string,password:string,host:string,port?:int,has_pose?:bool} $data
+	 * @throws RobotNotFoundException when an explicit id has no row
 	 */
 	public function upsertRobot(array $data, ?int $id = null): Robot
 	{
@@ -154,6 +215,9 @@ class RobotService
 		$robot = null;
 		if ($id !== null) {
 			$robot = $this->getRobot($id);
+			if ($robot === null) {
+				throw new RobotNotFoundException($id);
+			}
 		}
 		if ($robot === null) {
 			$robot = $this->robots->findFirst();
@@ -192,9 +256,12 @@ class RobotService
 		return $this->robots->update($robot);
 	}
 
+	/**
+	 * @throws SecretDecryptException when the stored value will not decrypt
+	 */
 	public function getPlainPassword(Robot $robot): string
 	{
-		return $this->crypto->decrypt($robot->getPasswordEnc());
+		return $this->crypto->decrypt($robot->getPasswordEnc(), 'robot_password');
 	}
 
 	public function setFloorplanPath(int $robotId, string $path): ?Robot
@@ -220,7 +287,8 @@ class RobotService
 		$health = $this->bridge->health();
 
 		$state = is_array($bridge['body']) ? $bridge['body'] : [];
-		// Bridge may wrap as { ok, state } (index.js) or return the DTO flat.
+		// BridgeClient::getState() already unwraps the { ok, state } envelope, so
+		// this is belt-and-braces for a bridge that ever returns the DTO flat.
 		if (isset($state['state']) && is_array($state['state'])) {
 			$state = $state['state'];
 		}
@@ -355,15 +423,27 @@ class RobotService
 	/**
 	 * Re-open the bridge MQTT session using DB-stored credentials.
 	 *
+	 * No primary-robot fallback: an unknown id used to connect (and audit)
+	 * against whichever robot happened to be first in the table.
+	 *
 	 * @return array<string, mixed>
 	 */
 	public function connectTest(int $robotId): array
 	{
-		$robot = $this->getRobot($robotId) ?? $this->getPrimaryRobot();
+		$robot = $this->getRobot($robotId);
 		if ($robot === null) {
-			return ['ok' => false, 'error' => 'robot_not_configured'];
+			return ['ok' => false, 'error' => 'robot_not_found', 'robot_id' => $robotId];
 		}
-		$password = $this->getPlainPassword($robot);
+		try {
+			$password = $this->getPlainPassword($robot);
+		} catch (SecretDecryptException $e) {
+			return [
+				'ok' => false,
+				'error' => 'credential_decrypt_failed',
+				'message' => $e->getMessage(),
+				'robot_id' => (int) $robot->getId(),
+			];
+		}
 		if ($robot->getBlid() === '' || $password === '' || $robot->getHost() === '') {
 			return ['ok' => false, 'error' => 'incomplete_credentials'];
 		}
@@ -476,16 +556,32 @@ class RobotService
 		return $raw;
 	}
 
-	/** @return array<string, mixed> */
+	/**
+	 * Admin-facing summary — never returns the passphrase itself.
+	 *
+	 * A stored-but-undecryptable passphrase is reported as such rather than as
+	 * "not set", so the admin page can tell "type one in" apart from "the one on
+	 * disk is unreadable since the instance secret changed".
+	 *
+	 * @return array<string, mixed>
+	 */
 	public function getHomeWifiPrefs(): array
 	{
 		$ssid = trim($this->config->getAppValue(Application::APP_ID, 'home_wifi_ssid', 'Sheela 6'));
-		$pass = $this->crypto->get('home_wifi_password', '');
+		$stored = trim($this->config->getAppValue(Application::APP_ID, 'home_wifi_password', ''));
+		$passwordError = null;
+		$passwordSet = $stored !== '';
+		try {
+			$passwordSet = $this->crypto->get('home_wifi_password', '') !== '';
+		} catch (SecretDecryptException $e) {
+			$passwordError = $e->getMessage();
+		}
 		$timezone = trim($this->config->getAppValue(Application::APP_ID, 'home_timezone', 'America/Los_Angeles'));
 		$country = trim($this->config->getAppValue(Application::APP_ID, 'home_country', 'US'));
 		return [
 			'ssid' => $ssid !== '' ? $ssid : 'Sheela 6',
-			'password_set' => $pass !== '',
+			'password_set' => $passwordSet,
+			'password_error' => $passwordError,
 			'timezone' => $timezone !== '' ? $timezone : 'America/Los_Angeles',
 			'country' => $country !== '' ? $country : 'US',
 		];
@@ -527,7 +623,17 @@ class RobotService
 		$ssid = trim((string) ($opts['home_ssid'] ?? $opts['ssid'] ?? $home['ssid']));
 		$pass = (string) ($opts['home_pass'] ?? $opts['password'] ?? '');
 		if ($pass === '') {
-			$pass = $this->crypto->get('home_wifi_password', '');
+			try {
+				$pass = $this->crypto->get('home_wifi_password', '');
+			} catch (SecretDecryptException $e) {
+				// Pushing an `enc:v1:` blob into the robot's wlcfg.pass would brick
+				// its Wi-Fi join; refuse instead and tell the admin to re-enter it.
+				return [
+					'ok' => false,
+					'error' => 'home_wifi_password_undecryptable',
+					'message' => $e->getMessage(),
+				];
+			}
 		}
 		if ($ssid === '' || $pass === '') {
 			return ['ok' => false, 'error' => 'home_wifi_required'];

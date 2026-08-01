@@ -3,19 +3,86 @@
 /**
  * nc-roomba-wifi-helper — privileged host service for Soft-AP Wi-Fi provisioning.
  *
- * Binds to ROOMBA_WIFI_HELPER_BIND (default 0.0.0.0:8091) so the Docker bridge
- * can reach it via host.docker.internal. Requires ROOMBA_WIFI_HELPER_TOKEN for
- * every mutating call when the token env is set (recommended in production).
+ * This process runs as root and shells out to `nmcli` / `iw` / `ip`, so its
+ * exposure is deliberately narrow:
+ *
+ *  - It refuses to start without ROOMBA_WIFI_HELPER_TOKEN. There is no
+ *    "no token configured, allow everything" mode; set
+ *    ROOMBA_WIFI_HELPER_ALLOW_NO_TOKEN=1 for local development only.
+ *  - It does NOT bind 0.0.0.0 by default. The bridge reaches it as
+ *    `host.docker.internal`, which Docker maps to the host's docker0 address,
+ *    so the default binds loopback plus that gateway address — reachable from
+ *    containers and the host, not from the rest of the LAN. Set
+ *    ROOMBA_WIFI_HELPER_BIND to override (comma-separated addresses).
+ *  - The token is compared in constant time, header or JSON body only. Query
+ *    strings are not accepted: they land in access logs and Referer headers.
  */
+
+const crypto = require('node:crypto')
+const os = require('node:os')
 
 const express = require('express')
 const wifi = require('./lib/wifi')
 const { provisionSoftAp, blidFromSsid } = require('./lib/provision')
 
 const PORT = Number(process.env.ROOMBA_WIFI_HELPER_PORT || 8091)
-const HOST = process.env.ROOMBA_WIFI_HELPER_BIND || '0.0.0.0'
 const TOKEN = process.env.ROOMBA_WIFI_HELPER_TOKEN || ''
+const ALLOW_NO_TOKEN = process.env.ROOMBA_WIFI_HELPER_ALLOW_NO_TOKEN === '1'
 const VERSION = require('./package.json').version
+
+/**
+ * IPv4 address of the Docker bridge interface, when Docker is installed.
+ * `extra_hosts: host.docker.internal:host-gateway` resolves to exactly this, so
+ * binding it keeps the bridge working without exposing the LAN.
+ *
+ * @param {string} [ifname]
+ * @param {NodeJS.Dict<os.NetworkInterfaceInfo[]>} [interfaces]
+ * @returns {string|null}
+ */
+function dockerGatewayAddress(
+	ifname = process.env.ROOMBA_WIFI_HELPER_DOCKER_IFACE || 'docker0',
+	interfaces = os.networkInterfaces(),
+) {
+	const entries = interfaces[ifname] || []
+	const v4 = entries.find((e) => e && (e.family === 'IPv4' || e.family === 4))
+	return v4 ? v4.address : null
+}
+
+/**
+ * Addresses to listen on.
+ *
+ * @param {NodeJS.ProcessEnv} [env]
+ * @param {string|null} [gateway]
+ * @returns {string[]}
+ */
+function resolveBindHosts(env = process.env, gateway = dockerGatewayAddress()) {
+	const explicit = String(env.ROOMBA_WIFI_HELPER_BIND || '').trim()
+	if (explicit) {
+		return [...new Set(explicit.split(',').map((h) => h.trim()).filter(Boolean))]
+	}
+	const hosts = ['127.0.0.1']
+	if (gateway && !hosts.includes(gateway)) {
+		hosts.push(gateway)
+	}
+	return hosts
+}
+
+/**
+ * Constant-time token comparison. Both sides are hashed first so the comparison
+ * length is fixed and a wrong-length guess cannot be distinguished by timing.
+ *
+ * @param {string} got
+ * @param {string} want
+ * @returns {boolean}
+ */
+function tokenMatches(got, want) {
+	if (typeof got !== 'string' || typeof want !== 'string' || want === '' || got === '') {
+		return false
+	}
+	const a = crypto.createHash('sha256').update(got).digest()
+	const b = crypto.createHash('sha256').update(want).digest()
+	return crypto.timingSafeEqual(a, b)
+}
 
 const app = express()
 app.disable('x-powered-by')
@@ -42,10 +109,16 @@ app.use((req, res, next) => {
  */
 function requireToken(req, res, next) {
 	if (!TOKEN) {
+		// Reached only under ROOMBA_WIFI_HELPER_ALLOW_NO_TOKEN=1 (startup refuses
+		// otherwise), and even then every call is refused unless it is local.
+		if (!ALLOW_NO_TOKEN) {
+			return res.status(503).json({ ok: false, error: 'helper_misconfigured_no_token' })
+		}
 		return next()
 	}
-	const got = req.get('x-roomba-helper-token') || req.query.token || (req.body && req.body.token)
-	if (got !== TOKEN) {
+	// Header or JSON body only — never ?token=, which leaks into access logs.
+	const got = req.get('x-roomba-helper-token') || (req.body && req.body.token) || ''
+	if (!tokenMatches(String(got), TOKEN)) {
 		return res.status(401).json({ ok: false, error: 'unauthorized' })
 	}
 	return next()
@@ -65,13 +138,14 @@ function wrap(handler) {
 	}
 }
 
+// Unauthenticated liveness only. The wireless interface name is host topology
+// and is reported by the token-gated /wifi/scan and /wifi/link instead.
 app.get('/health', (req, res) => {
 	res.json({
 		ok: true,
 		service: 'nc-roomba-wifi-helper',
 		version: VERSION,
 		mock: process.env.ROOMBA_WIFI_HELPER_MOCK === '1',
-		iface: wifi.IFACE,
 		token_required: Boolean(TOKEN),
 	})
 })
@@ -126,6 +200,7 @@ app.post('/wifi/softap/provision', requireToken, wrap(async (req, res) => {
 			timezone: body.timezone,
 			country: body.country,
 			localtimeoffset: body.localtimeoffset,
+			verifyTimeoutMs: body.verify_timeout_ms,
 		})
 		res.json({ ok: true, ...result })
 	} finally {
@@ -135,11 +210,56 @@ app.post('/wifi/softap/provision', requireToken, wrap(async (req, res) => {
 	}
 }))
 
-if (require.main === module) {
-	app.listen(PORT, HOST, () => {
+function main() {
+	if (!TOKEN) {
+		if (!ALLOW_NO_TOKEN) {
+			// eslint-disable-next-line no-console
+			console.error(
+				'nc-roomba-wifi-helper: refusing to start — ROOMBA_WIFI_HELPER_TOKEN is not set.\n'
+				+ '  This service runs as root and can reconfigure the host wireless interface.\n'
+				+ '  Set the token (systemd: EnvironmentFile=/etc/nc-roomba-wifi-helper.env), or set\n'
+				+ '  ROOMBA_WIFI_HELPER_ALLOW_NO_TOKEN=1 for local development only.',
+			)
+			process.exit(78) // EX_CONFIG
+		}
 		// eslint-disable-next-line no-console
-		console.log(`nc-roomba-wifi-helper ${VERSION} on ${HOST}:${PORT} mock=${process.env.ROOMBA_WIFI_HELPER_MOCK === '1'}`)
-	})
+		console.warn(
+			'nc-roomba-wifi-helper: *** RUNNING WITH NO TOKEN *** '
+			+ '(ROOMBA_WIFI_HELPER_ALLOW_NO_TOKEN=1). Never do this on a shared network.',
+		)
+	}
+
+	// Loopback and the docker gateway are separate listeners on the same port.
+	// One failing (e.g. docker0 went away mid-boot) must not take the service
+	// down, but zero listeners is fatal.
+	const hosts = resolveBindHosts()
+	let bound = 0
+	let pending = hosts.length
+	for (const host of hosts) {
+		const server = app.listen(PORT, host, () => {
+			bound++
+			pending--
+			// eslint-disable-next-line no-console
+			console.log(
+				`nc-roomba-wifi-helper ${VERSION} on ${host}:${PORT} `
+				+ `mock=${process.env.ROOMBA_WIFI_HELPER_MOCK === '1'} token=${TOKEN ? 'on' : 'OFF'}`,
+			)
+		})
+		server.on('error', (err) => {
+			pending--
+			// eslint-disable-next-line no-console
+			console.error(`nc-roomba-wifi-helper: cannot listen on ${host}:${PORT} — ${err.message}`)
+			if (pending === 0 && bound === 0) {
+				// eslint-disable-next-line no-console
+				console.error('nc-roomba-wifi-helper: no listening address, giving up')
+				process.exit(1)
+			}
+		})
+	}
 }
 
-module.exports = { app }
+if (require.main === module) {
+	main()
+}
+
+module.exports = { app, resolveBindHosts, dockerGatewayAddress, tokenMatches }

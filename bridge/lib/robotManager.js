@@ -23,6 +23,7 @@ require('./tlsLegacy')
 const dorita980 = require('dorita980')
 const { normalizeState } = require('./stateNormalizer')
 const { WifiHelperClient } = require('./wifiHelperClient')
+const { MissionLog } = require('./missionLog')
 
 const BRIDGE_VERSION = require('../package.json').version
 
@@ -31,11 +32,31 @@ const TRAIL_MAX = 2000 // ring-buffer cap on trail points
 const TRAIL_MIN_MOVE_CM = 5 // decimate: ignore points closer than this
 const CELL_CM = 25 // covered-cell grid size (~robot swath); also the est-area unit
 
-/** Actions the app exposes, mapped to dorita980 local methods (first hit wins). */
+/**
+ * @param {unknown} value
+ * @returns {number|null} a finite number, or null (never NaN, never 0-for-absent)
+ */
+function numOrNull(value) {
+	if (value === null || value === undefined || value === '') {
+		return null
+	}
+	const n = Number(value)
+	return Number.isFinite(n) ? n : null
+}
+
+/**
+ * Actions the app exposes, mapped to dorita980 local methods (first hit wins).
+ *
+ * Every name here must resolve to a method the installed dorita980 actually
+ * implements — see test/robotManager.test.js, which checks this against the
+ * real library rather than the mock. `spot` used to be listed
+ * (`['spot','cleanSpot']`); dorita980 v2's Local class exposes neither, so the
+ * button returned 501 against the real robot every time. The mock implemented
+ * it, which is why the test suite never noticed.
+ */
 const ACTIONS = {
 	clean: ['clean', 'start'],
 	start: ['start', 'clean'],
-	spot: ['spot', 'cleanSpot'],
 	pause: ['pause'],
 	resume: ['resume'],
 	stop: ['stop'],
@@ -47,7 +68,6 @@ const ACTIONS = {
 const MOCK_TRANSITIONS = {
 	clean: { phase: 'run', cycle: 'clean' },
 	start: { phase: 'run', cycle: 'clean' },
-	spot: { phase: 'run', cycle: 'spot' },
 	pause: { phase: 'pause' },
 	resume: { phase: 'run' },
 	stop: { phase: 'stop', cycle: 'none' },
@@ -132,6 +152,13 @@ class RobotManager extends EventEmitter {
 		// Mission-scoped pose trail + covered-cell dwell map — reset on new mission.
 		this.poseTrail = []
 		this.coveredCells = new Map() // "gx,gy" -> dwell count
+		// Set on mission start so the previous mission's stale pose (still sitting
+		// in the merged `raw`) is not appended as this mission's first point.
+		this.poseStale = false
+		/** @type {{cycle:string,battery_start:?number,n_mssn_start:?number}|null} */
+		this.missionMeta = null
+		// Journal of completed missions, drained by Nextcloud via GET /missions.
+		this.missionLog = new MissionLog({ logger: { warn: (m) => this.log(m) } })
 		this.startedAt = Date.now()
 		this.updatedAt = new Date().toISOString()
 		this.mockTimer = null
@@ -178,7 +205,7 @@ class RobotManager extends EventEmitter {
 				ok: true,
 				mock: true,
 				networks: [{
-					ssid: 'Roomba-3165811C32410750',
+					ssid: 'Roomba-1A2B3C4D5E6F7788',
 					bssid: '80:C5:F2:C4:15:DE',
 					chan: 1,
 					signal: 60,
@@ -252,7 +279,7 @@ class RobotManager extends EventEmitter {
 				prov = {
 					ok: true,
 					mock: true,
-					blid: (opts.blid || (blidMatch && blidMatch[1]) || '3165811C32410750').toUpperCase(),
+					blid: (opts.blid || (blidMatch && blidMatch[1]) || '1A2B3C4D5E6F7788').toUpperCase(),
 					password: `:1:${Math.floor(Date.now() / 1000)}:mocksoftap00001`,
 					steps: ['mock'],
 				}
@@ -321,9 +348,13 @@ class RobotManager extends EventEmitter {
 				this.password = password
 			}
 
+			// The robot's local MQTT password must never reach the status object:
+			// getSoftapStatus() is served by the unauthenticated bridge route
+			// /onboard/softap-status and mirrored to /api/admin/setup/status, and
+			// it lives for the whole process lifetime. It is returned exactly once
+			// here, in the provision response, so PHP can persist it.
 			const detail = {
 				blid,
-				password,
 				ip: lanIp || null,
 				robot_ssid: robotSsid,
 				home_ssid: homeSsid,
@@ -331,10 +362,12 @@ class RobotManager extends EventEmitter {
 				candidates,
 				connect: connectHealth,
 				steps: prov.steps || [],
+				verified: prov.verified !== false,
 				mock: Boolean(prov.mock || this.mock),
+				password_returned: true,
 			}
 			this.#setSoftapStatus('done', { ok: true, error: null, detail })
-			return { ok: true, ...detail, status: this.getSoftapStatus() }
+			return { ok: true, ...detail, password, status: this.getSoftapStatus() }
 		} catch (err) {
 			this.#setSoftapStatus('error', {
 				ok: false,
@@ -1021,21 +1054,94 @@ class RobotManager extends EventEmitter {
 		this.#publish()
 	}
 
-	/** Track mission start so the timeline has an origin across reconnects. */
+	/**
+	 * Track mission start/end: gives the timeline an origin across reconnects,
+	 * and journals every completed mission for Nextcloud to drain.
+	 */
 	#trackMission() {
 		const mission = this.raw.cleanMissionStatus || {}
-		const running = mission.cycle && mission.cycle !== 'none'
+		const running = Boolean(mission.cycle && mission.cycle !== 'none')
+
 		if (running && !this.missionStartedAt) {
 			// A new mission began — start a fresh footprint.
 			this.missionStartedAt = new Date().toISOString()
 			this.poseTrail = []
 			this.coveredCells = new Map()
-		} else if (!running) {
+			// `this.raw` is a running merge, so it still holds the *previous*
+			// mission's final pose. Appending it here produced a trail whose
+			// first point was hundreds of centimetres from the second (observed
+			// live: (-103,-291) followed by (0,0)), drawing a phantom line across
+			// the map and adding a stray covered cell that inflated the area
+			// estimate. Wait for a genuinely fresh pose instead.
+			this.poseStale = true
+			this.missionMeta = {
+				cycle: String(mission.cycle),
+				battery_start: numOrNull(this.raw.batPct),
+				n_mssn_start: numOrNull((this.raw.bbmssn || {}).nMssn),
+			}
+		} else if (!running && this.missionStartedAt) {
+			this.#finishMission(mission)
 			this.missionStartedAt = null
+			this.missionMeta = null
 			// Keep the last footprint on screen until the next mission starts.
 		}
+
 		if (running) {
 			this.#appendPose()
+		}
+	}
+
+	/**
+	 * Journal a mission that has just stopped running.
+	 *
+	 * The bridge is the only component that sees the start and stop edges as
+	 * they happen, so these timings are the authoritative ones. Nextcloud's own
+	 * sampler runs on five-minute cron and would otherwise have to guess.
+	 *
+	 * @param {object} mission raw cleanMissionStatus at the moment it stopped
+	 */
+	#finishMission(mission) {
+		if (!this.missionLog) {
+			return
+		}
+		try {
+			const state = this.getState()
+			const meta = this.missionMeta || {}
+			const m = (state && state.mission) || {}
+			const phase = mission.phase || state.phase || null
+			const error = Number(mission.error || state.error || 0) || 0
+
+			// `nMssn` is the robot's own lifetime mission odometer. Recording it
+			// lets Nextcloud reconcile: if the counter advanced by more than the
+			// journal explains (bridge restarted mid-mission, say), it knows a
+			// mission happened that nobody witnessed.
+			const nMssnEnd = numOrNull((this.raw.bbmssn || {}).nMssn)
+
+			const record = this.missionLog.append({
+				started_at: this.missionStartedAt,
+				ended_at: new Date().toISOString(),
+				cycle: meta.cycle || String(mission.cycle || 'clean'),
+				phase_final: phase,
+				error_code: error,
+				// Raw first, derived second: a 960 reports both as 0, which is why
+				// the estimates exist. Never present an estimate as measured.
+				sqft: numOrNull(m.sqft),
+				sqft_est: numOrNull(m.sqft_est),
+				mssn_m: numOrNull(m.mssn_m),
+				mission_m_est: numOrNull(m.mission_m_est),
+				battery_start: meta.battery_start ?? null,
+				battery_end: numOrNull(this.raw.batPct),
+				n_mssn_start: meta.n_mssn_start ?? null,
+				n_mssn_end: nMssnEnd,
+				trail_points: Array.isArray(state.pose_trail) ? state.pose_trail.length : 0,
+				covered_cells: Array.isArray(state.covered_cells) ? state.covered_cells.length : 0,
+				cell_cm: CELL_CM,
+				source: 'bridge',
+			})
+			this.log(`mission journalled seq=${record.seq} cycle=${record.cycle} error=${record.error_code}`)
+		} catch (err) {
+			// A journalling failure must never disturb robot control.
+			this.log(`mission journal failed: ${err && err.message ? err.message : err}`)
 		}
 	}
 
@@ -1051,6 +1157,17 @@ class RobotManager extends EventEmitter {
 		if (!Number.isFinite(x) || !Number.isFinite(y)) {
 			return
 		}
+		// First pose after a mission reset: `raw` still carries the previous
+		// mission's last point, so drop exactly one sample and wait for a real one.
+		if (this.poseStale) {
+			this.poseStale = false
+			this.lastStalePose = { x, y }
+			return
+		}
+		if (this.lastStalePose && this.lastStalePose.x === x && this.lastStalePose.y === y) {
+			return // unchanged since the reset — still the old mission's pose
+		}
+		this.lastStalePose = null
 		const theta = Number(pose.theta)
 		const last = this.poseTrail[this.poseTrail.length - 1]
 		if (last && Math.hypot(x - last.x, y - last.y) < TRAIL_MIN_MOVE_CM) {
@@ -1062,6 +1179,13 @@ class RobotManager extends EventEmitter {
 		}
 		const key = `${Math.round(x / CELL_CM)},${Math.round(y / CELL_CM)}`
 		this.coveredCells.set(key, (this.coveredCells.get(key) || 0) + 1)
+	}
+
+	/**
+	 * @param {string} message
+	 */
+	log(message) {
+		console.log(`[roomba] ${message}`)
 	}
 
 	#publish() {
@@ -1158,20 +1282,21 @@ class RobotManager extends EventEmitter {
 		} else if (next.phase === 'run' && mission.cycle === 'none') {
 			mission.cycle = 'clean'
 		}
-		if (action === 'clean' || action === 'start' || action === 'spot') {
+		if (action === 'clean' || action === 'start') {
 			mission.mssnM = 0
 			mission.sqft = 0
 			mission.nMssn += 1
 			mission.error = 0
 			mission.notReady = 0
-			this.missionStartedAt = new Date().toISOString()
-		}
-		if (action === 'stop') {
-			this.missionStartedAt = null
 		}
 		this.lastCommand = { action, method: 'mock', at: new Date().toISOString(), result: 'sent' }
 		this.mockTick = 0
-		this.#publish()
+		// Route through the same tracking path as a real MQTT push. The mock used
+		// to set/clear `missionStartedAt` itself and publish directly, which meant
+		// the mission start/end edges never reached #trackMission -- so nothing
+		// was journalled and the mock proved a code path the real robot does not
+		// take. One lifecycle owner, exercised identically by both.
+		this.#ingest({})
 		return { ok: true, action, phase: mission.phase, cycle: mission.cycle, mock: true }
 	}
 
@@ -1193,13 +1318,12 @@ class RobotManager extends EventEmitter {
 					mission.phase = 'charge'
 					mission.cycle = 'none'
 					mission.mssnM = 0
-					this.missionStartedAt = null
 				}
 			} else if (mission.phase === 'charge' && this.raw.batPct < 100) {
 				this.raw.batPct += 1
 			}
 			this.raw.signal.rssi = -50 - (this.mockTick % 12)
-			this.#publish()
+			this.#ingest({})
 		}, intervalMs)
 		if (typeof this.mockTimer.unref === 'function') {
 			this.mockTimer.unref()
