@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] - 2026-07-31
+
+### Fixed
+
+- **The Dashboard wasted about a third of the screen, and the Lifetime card sat
+  stranded in it.** Three things compounded:
+  - `.nc-roomba-map__svg` is `aspect-ratio: 1/1; width: 100%`, which is right on
+    the Location view where the map owns the page. Inside the mission stage it
+    sits in a full-width slot, so on a 1600px screen it rendered an **874×874
+    square** and drove the stage to 1230px tall — against a 132px timeline
+    beside it, leaving roughly 1100px of empty right-hand column. The stage
+    mini-map is now height-capped and letterboxes via `preserveAspectRatio`, so
+    the footprint keeps its proportions and loses only the dead space.
+  - With the stage that tall, grid auto-placement pushed **Lifetime onto a row of
+    its own** — a 448px card with 909px of empty grid next to it. The stage now
+    spans two rows so Timeline and Lifetime stack beside it in the right-hand
+    column. Deliberately `grid-row: span 2` rather than fixed row numbers,
+    because the error banner above is conditional and would shift any hard index.
+  - Right-column cards are `align-self: start`, so a short Timeline no longer
+    stretches into a mostly-empty tall box.
+
+  Measured at 1600px: page height **2257px → 1181px**, grid fill 63% → 85%, and
+  the mini-map 874px → 242px. Verified at 1600/1280/760 with no new clipping and
+  no horizontal scroll; the single-column mobile layout is untouched.
+
 ## [0.10.0] - 2026-07-31
 
 Mission History has never worked in any released version. Fixing the reported

@@ -394,10 +394,23 @@ body[data-theme-light-highcontrast] {
 
 		.nc-roomba-dashboard__hero { grid-column: 1 / 9; }
 		.nc-roomba-dashboard__controls { grid-column: 9 / 13; }
-		.nc-roomba-dashboard__stage { grid-column: 1 / 9; }
+
+		// The stage spans two rows so Timeline and Lifetime stack beside it in
+		// the right-hand column. Without the span, auto-placement put Lifetime on
+		// a row of its own -- 448px of card with 909px of empty grid next to it,
+		// and a tall empty gap under the Timeline. Deliberately `span 2` rather
+		// than fixed row numbers, because the error banner above is conditional
+		// and would shift any hard-coded index.
+		.nc-roomba-dashboard__stage { grid-column: 1 / 9; grid-row: span 2; }
 		.nc-roomba-dashboard__timeline { grid-column: 9 / 13; }
 		.nc-roomba-dashboard__lifetime { grid-column: 9 / 13; }
 		.nc-roomba-dashboard__wide { grid-column: 1 / -1; }
+
+		// Cards sit at the top of their track rather than stretching to fill it,
+		// so a short Timeline does not become a mostly-empty tall box.
+		.nc-roomba-dashboard__controls,
+		.nc-roomba-dashboard__timeline,
+		.nc-roomba-dashboard__lifetime { align-self: start; }
 	}
 }
 
@@ -860,6 +873,21 @@ body[data-theme-light-highcontrast] {
 		grid-column: 1 / -1;
 		margin-top: 0.15rem;
 		overflow: hidden;
+
+		// The map SVG is `aspect-ratio: 1/1; width: 100%`, which is right on the
+		// Location view where it owns the page. Here it sits in a full-width slot
+		// of the stage, so on a wide screen it rendered an 874px SQUARE and drove
+		// the stage to 1230px tall -- against a 132px timeline beside it. That one
+		// rule was responsible for ~1100px of empty right-hand column and pushed
+		// the Lifetime card onto an orphan row of its own.
+		//
+		// Cap the height instead and let the viewBox letterbox: the default
+		// preserveAspectRatio="xMidYMid meet" keeps the footprint undistorted and
+		// centred, so a wider-than-tall box loses nothing but dead space.
+		.nc-roomba-map__svg {
+			aspect-ratio: auto;
+			height: clamp(180px, 24vh, 340px);
+		}
 	}
 
 	&__hint {
