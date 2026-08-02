@@ -18,6 +18,20 @@ use Psr\Log\LoggerInterface;
 
 class MissionService
 {
+	/**
+	 * Cycles that mean the robot is actually cleaning.
+	 *
+	 * The robot also reports non-cleaning errands as a `cycle`: `dock` (driving
+	 * home), `evac` (emptying into a base), `train` (a mapping run). An earlier
+	 * revision treated "anything but none" as a mission -- widened to catch
+	 * `quick`, which this robot really does report -- and consequently filed a
+	 * five-second docking manoeuvre in History as a completed clean.
+	 */
+	private const CLEANING_CYCLES = ['clean', 'quick', 'spot'];
+
+	/** Two missions this close together are the same physical run, seen twice. */
+	private const OVERLAP_TOLERANCE_S = 900;
+
 	/** appconfig key prefix: last bridge journal seq drained, per robot. */
 	private const CURSOR_PREFIX = 'mission_cursor_';
 	/** appconfig key prefix: last observed lifetime mission counter, per robot. */
@@ -96,7 +110,7 @@ class MissionService
 		// was ['clean','spot'] and missed the value this 960 actually reports
 		// while running -- 'quick' -- which only escaped notice because the phase
 		// check usually caught it too. It did not during hmUsrDock.
-		$running = ($cycle !== '' && $cycle !== 'none')
+		$running = in_array($cycle, self::CLEANING_CYCLES, true)
 			|| in_array($phase, ['run', 'hmMidMsn', 'hmPostMsn'], true);
 
 		if ($running && $open === null) {
@@ -287,6 +301,18 @@ class MissionService
 		$mission->setCreatedAt(time());
 		$mission = $this->missions->insert($mission);
 
+		// One physical run can be caught by all three recorders. The bridge saw
+		// the actual MQTT edges, so its record wins: drop any sampled or inferred
+		// row covering the same window rather than leaving History showing the
+		// mission twice with different times.
+		$superseded = $this->supersedeInferred($robotId, $started, $ended ?? $started, (int) $mission->getId());
+		if ($superseded > 0) {
+			$this->logger->info(
+				'nc_roomba: bridge mission seq {seq} superseded {n} inferred row(s) for the same run',
+				['seq' => $seq, 'n' => $superseded],
+			);
+		}
+
 		$robot = $this->robots->getRobot($robotId);
 		$name = $robot?->getName() ?? 'the robot';
 		if ($error !== 0) {
@@ -333,11 +359,22 @@ class MissionService
 		}
 
 		// How many of the missions in that delta did we already capture?
+		//
+		// Counter bookends alone are not enough: the bridge journals the moment a
+		// cycle stops, and the robot bumps `nMssn` a little later, so a bridge row
+		// for this very run typically reads n_mssn_start == n_mssn_end == previous
+		// and falls outside (previous, counter]. Trusting the counters alone
+		// therefore filed a duplicate for every single mission. Fall back to
+		// "is there already a row covering roughly now?" before inventing one.
 		$delta = $counter - $previous;
 		$accounted = $this->missions->countRecordedBetweenCounters($robotId, $previous, $counter);
 		$missing = $delta - $accounted;
 		if ($missing <= 0) {
 			return 0;
+		}
+		$now = time();
+		if ($this->alreadyRecorded($robotId, $now - self::OVERLAP_TOLERANCE_S, $now)) {
+			return 0; // the bridge or the sampler already has this run
 		}
 
 		for ($i = 0; $i < min($missing, 10); $i++) {
@@ -362,6 +399,34 @@ class MissionService
 			['prev' => $previous, 'now' => $counter, 'seen' => $accounted, 'missing' => min($missing, 10)],
 		);
 		return min($missing, 10);
+	}
+
+	/**
+	 * Remove sampled/inferred rows that describe the same run as an
+	 * authoritative one. Never touches another `bridge` row.
+	 */
+	private function supersedeInferred(int $robotId, int $start, int $end, int $keepId): int
+	{
+		$removed = [];
+		foreach ($this->missions->findOverlapping($robotId, $start, $end, self::OVERLAP_TOLERANCE_S) as $other) {
+			$id = (int) $other->getId();
+			if ($id === $keepId || $other->getSource() === 'bridge') {
+				continue;
+			}
+			$removed[] = $id;
+		}
+		if ($removed === []) {
+			return 0;
+		}
+		$this->phases->deleteByMissionIds($removed);
+		$this->telemetry->clearMissionIds($removed);
+		return $this->missions->deleteByIds($removed);
+	}
+
+	/** True when some mission already covers this window (any source). */
+	private function alreadyRecorded(int $robotId, int $start, int $end): bool
+	{
+		return $this->missions->findOverlapping($robotId, $start, $end, self::OVERLAP_TOLERANCE_S) !== [];
 	}
 
 	private static function intOrNull(mixed $value): ?int

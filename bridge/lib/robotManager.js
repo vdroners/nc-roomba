@@ -33,6 +33,16 @@ const TRAIL_MIN_MOVE_CM = 5 // decimate: ignore points closer than this
 const CELL_CM = 25 // covered-cell grid size (~robot swath); also the est-area unit
 
 /**
+ * `cleanMissionStatus.cycle` values that mean the robot is actually cleaning.
+ *
+ * It also reports non-cleaning errands here -- `dock` (driving home), `evac`
+ * (emptying into a base), `train` (mapping run). Treating "anything but none"
+ * as a mission filed a docking manoeuvre as a completed clean, which is how a
+ * five-second `cycle: dock` ended up in History with no area.
+ */
+const CLEANING_CYCLES = new Set(['clean', 'quick', 'spot'])
+
+/**
  * @param {unknown} value
  * @returns {number|null} a finite number, or null (never NaN, never 0-for-absent)
  */
@@ -1060,7 +1070,7 @@ class RobotManager extends EventEmitter {
 	 */
 	#trackMission() {
 		const mission = this.raw.cleanMissionStatus || {}
-		const running = Boolean(mission.cycle && mission.cycle !== 'none')
+		const running = CLEANING_CYCLES.has(String(mission.cycle || ''))
 
 		if (running && !this.missionStartedAt) {
 			// A new mission began — start a fresh footprint.

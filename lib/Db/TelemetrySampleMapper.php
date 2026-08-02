@@ -46,6 +46,26 @@ class TelemetrySampleMapper extends QBMapper
 		return $qb->executeStatement();
 	}
 
+	/**
+	 * Detach samples from missions being removed, without deleting the samples.
+	 *
+	 * Used when an authoritative bridge record supersedes an inferred one: the
+	 * telemetry is still true, it just no longer belongs to a row that exists.
+	 *
+	 * @param int[] $missionIds
+	 */
+	public function clearMissionIds(array $missionIds): int
+	{
+		if ($missionIds === []) {
+			return 0;
+		}
+		$qb = $this->db->getQueryBuilder();
+		$qb->update($this->getTableName())
+			->set('mission_id', $qb->createNamedParameter(null))
+			->where($qb->expr()->in('mission_id', $qb->createNamedParameter($missionIds, IQueryBuilder::PARAM_INT_ARRAY)));
+		return $qb->executeStatement();
+	}
+
 	/** @param int[] $missionIds */
 	public function deleteByMissionIds(array $missionIds): int
 	{

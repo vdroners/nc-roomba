@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] - 2026-08-02
+
+Reported as "battery percent and other data missing on the Dashboard". The
+readings were blank because Nextcloud had lost its network route to the bridge —
+and reviewing the live deployment turned up two more real defects.
+
+### Fixed
+
+- **The Dashboard showed blank readings because `cloud_app` had silently lost
+  its bridge network attachment.** The containers were recreated the day before;
+  `docker network connect` does not survive a recreate and the cloud stack's
+  compose file does not declare the app networks, so Nextcloud was cut off from
+  the robot for roughly a day. The bridge was fine throughout (battery 100,
+  rssi −31) and `cloud_cron` kept sampling, so telemetry and History kept
+  recording — only the GUI was blind. Healed, and the ops container-watchdog now
+  re-attaches both `cloud_app` and `cloud_cron` to `nc-roomba-net` and
+  `nc-litter-net` every five minutes and raises an alert when it has to, so the
+  gap can never again last more than one watchdog cycle.
+- **The app said nothing while it was cut off.** It rendered empty battery, bin,
+  Wi-Fi and phase tiles, which reads as "the robot has no data" rather than "the
+  app has lost its connection" — the only mention of "unreachable" lived inside
+  the Connection health drawer, which you have to open on purpose. There is now
+  a banner on every tab when `connection_health.bridge_ok` is false, naming the
+  likely cause and the fix. Deliberately keyed off `bridge_ok` rather than off
+  missing readings, because an idle robot legitimately reports nulls and a
+  banner that cries wolf is worse than none.
+- **Every mission was being recorded twice.** The bridge journals the instant a
+  cycle stops, but the robot bumps its lifetime counter a moment later, so a
+  bridge row reads `n_mssn_start == n_mssn_end` and fell outside the range the
+  odometer reconciler checks. It concluded the run was unaccounted for and filed
+  a duplicate — and the sampler added a third. An authoritative bridge record now
+  supersedes any sampled or inferred row covering the same window (matched on
+  time overlap, since the three recorders disagree about boundaries by minutes),
+  and the odometer path will not invent a row when one already covers the period.
+  Four bogus rows removed from the live database.
+- **A docking manoeuvre was filed as a completed clean.** The robot reports
+  non-cleaning errands as a `cycle` too — `dock`, `evac`, `train` — and the
+  running test had been widened to "anything but none" in order to catch `quick`.
+  Both the bridge and the PHP ingest now recognise only real cleaning cycles.
 ## [0.10.1] - 2026-07-31
 
 ### Fixed

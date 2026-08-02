@@ -42,6 +42,29 @@
 				</div>
 			</NcNoteCard>
 
+			<!-- Nextcloud cannot reach the bridge at all. Without this the app just
+			     renders blank tiles -- battery, bin, Wi-Fi and phase all empty -- and
+			     looks like the robot has no data rather than like the app has lost
+			     its connection. That is exactly how a severed docker network went
+			     unnoticed for a day: the only mention of "unreachable" lived inside
+			     the health drawer, which you have to open on purpose. -->
+			<NcNoteCard
+				v-if="bridgeUnreachable"
+				type="error"
+				heading="Can't reach the robot"
+				data-testid="bridge-unreachable">
+				<p>
+					Nextcloud can't reach the {{ robotName }} bridge, so the readings below
+					are blank rather than out of date. The robot itself may be perfectly
+					fine — this is the link between Nextcloud and the bridge service.
+				</p>
+				<p class="nc-roomba-muted">
+					Usually a restarted container that lost its network attachment. Run
+					<code>make bridge-up</code> in the app directory, or open Connection
+					health for details.
+				</p>
+			</NcNoteCard>
+
 			<NcNoteCard v-if="error" type="error" :heading="'Something went wrong'">
 				{{ error }}
 			</NcNoteCard>
@@ -59,6 +82,7 @@
 </template>
 
 <script>
+import { isBridgeUnreachable } from '@/utils/format.js'
 import { NcButton, NcNoteCard } from '@nextcloud/vue'
 
 import ConnectionHealthDrawer from './ConnectionHealthDrawer.vue'
@@ -138,6 +162,25 @@ export default {
 	},
 
 	computed: {
+		/**
+		 * True when Nextcloud cannot reach the bridge at all.
+		 *
+		 * Deliberately keyed off `bridge_ok` rather than off missing readings: a
+		 * genuinely idle robot can legitimately report nulls for some fields, and
+		 * we must not cry wolf. `bridge_ok: false` means the HTTP call to the
+		 * bridge itself failed, which is never normal.
+		 *
+		 * @returns {boolean} whether to show the unreachable banner
+		 */
+		bridgeUnreachable() {
+			return isBridgeUnreachable(this.state)
+		},
+
+		/** @returns {string} the robot's display name, for the banner copy */
+		robotName() {
+			return (this.state && this.state.name) || 'robot'
+		},
+
 		actionErrorHeading() {
 			return this.actionErrorFor
 				? `“${this.actionErrorFor}” did not go through`

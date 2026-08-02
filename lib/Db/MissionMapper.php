@@ -154,6 +154,35 @@ class MissionMapper extends QBMapper
 		return (int) $qb->executeQuery()->fetchOne();
 	}
 
+	/**
+	 * Missions whose time window overlaps [start, end], widened by a tolerance.
+	 *
+	 * One physical run can be seen by up to three recorders -- the bridge (exact
+	 * MQTT edges), Nextcloud's periodic sampling, and the robot's own mission
+	 * odometer -- and they disagree about the boundaries by minutes. Matching on
+	 * overlap rather than equality is what lets the authoritative record replace
+	 * the inferred ones instead of sitting beside them in History.
+	 *
+	 * @return Mission[]
+	 */
+	public function findOverlapping(int $robotId, int $start, int $end, int $toleranceS = 900): array
+	{
+		$from = $start - $toleranceS;
+		$to = $end + $toleranceS;
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('robot_id', $qb->createNamedParameter($robotId, IQueryBuilder::PARAM_INT)))
+			// started_at <= to AND (ended_at IS NULL OR ended_at >= from)
+			->andWhere($qb->expr()->lte('started_at', $qb->createNamedParameter($to, IQueryBuilder::PARAM_INT)))
+			->andWhere($qb->expr()->orX(
+				$qb->expr()->isNull('ended_at'),
+				$qb->expr()->gte('ended_at', $qb->createNamedParameter($from, IQueryBuilder::PARAM_INT)),
+			))
+			->orderBy('started_at', 'ASC');
+		return $this->findEntities($qb);
+	}
+
 	public function countEndedBefore(int $cutoffTs): int
 	{
 		$qb = $this->db->getQueryBuilder();

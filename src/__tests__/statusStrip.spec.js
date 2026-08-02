@@ -12,6 +12,7 @@ import {
 	phaseLabel,
 	rssiClass,
 	rssiLabel,
+	isBridgeUnreachable,
 	signalBars,
 	timestampLabel,
 } from '@/utils/format.js'
@@ -110,5 +111,32 @@ describe('status strip labels', () => {
 		expect(timestampLabel(null)).toBe('')
 		expect(timestampLabel('nonsense')).toBe('')
 		expect(timestampLabel(1753444800)).not.toBe('')
+	})
+})
+
+// The "can't reach the robot" banner is a thin template over this predicate.
+// It exists because a severed docker network went unnoticed for a day: the app
+// rendered blank tiles, which reads as "the robot has no data" rather than
+// "the app has lost its connection".
+describe('bridge reachability', () => {
+	it('flags an unreachable bridge', () => {
+		expect(isBridgeUnreachable({ connection_health: { bridge_ok: false } })).toBe(true)
+	})
+
+	it('stays quiet when the bridge is reachable', () => {
+		expect(isBridgeUnreachable({ connection_health: { bridge_ok: true } })).toBe(false)
+	})
+
+	it('does not cry wolf on missing readings alone', () => {
+		// An idle robot can legitimately report nulls; only bridge_ok===false is
+		// definitive. A banner that fires on absent data would be permanent noise.
+		const idle = { battery_pct: null, bin: null, phase: null, connection_health: { bridge_ok: true } }
+		expect(isBridgeUnreachable(idle)).toBe(false)
+	})
+
+	it('stays quiet before the first frame, rather than flashing on load', () => {
+		expect(isBridgeUnreachable(null)).toBe(false)
+		expect(isBridgeUnreachable({})).toBe(false)
+		expect(isBridgeUnreachable({ connection_health: {} })).toBe(false)
 	})
 })

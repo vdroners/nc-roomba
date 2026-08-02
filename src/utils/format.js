@@ -357,3 +357,24 @@ export function markerTransformFor(pose) {
 	const theta = -(Number(pose && pose.theta) || 0) - 90
 	return `translate(${x} ${y}) rotate(${theta})`
 }
+
+/**
+ * Whether Nextcloud can currently reach the bridge at all.
+ *
+ * Keyed off `connection_health.bridge_ok` rather than off missing readings: an
+ * idle robot can legitimately report nulls for some fields, and a banner that
+ * cries wolf is worse than none. `bridge_ok === false` means the HTTP call to
+ * the bridge itself failed, which is never normal.
+ *
+ * This exists because a severed docker network went unnoticed for a day. The
+ * app rendered blank battery/bin/Wi-Fi tiles, which reads as "the robot has no
+ * data" rather than "the app has lost its connection", and the only mention of
+ * "unreachable" lived inside the health drawer you have to open on purpose.
+ *
+ * @param {object|null} state enriched robot state
+ * @returns {boolean} true only when the bridge is definitively unreachable
+ */
+export function isBridgeUnreachable(state) {
+	const health = (state && state.connection_health) || {}
+	return health.bridge_ok === false
+}
