@@ -108,7 +108,7 @@ const CONFLICT_HINTS = [
  */
 function mockSeedState() {
 	return {
-		name: process.env.ROBOT_NAME || 'Alfred',
+		name: process.env.ROBOT_NAME || 'Roomba',
 		batPct: 86,
 		bin: { present: true, full: false },
 		signal: { rssi: -52, snr: 38 },
@@ -875,7 +875,7 @@ class RobotManager extends EventEmitter {
 				ip: this.ip || '192.168.1.50',
 				hostname: 'Roomba-MOCKBLID000000000000000000',
 				blid: this.blid || 'MOCKBLID000000000000000000',
-				robotname: 'Alfred',
+				robotname: 'Roomba',
 				sku: 'R960020',
 				ver: '3',
 				source: 'mock',

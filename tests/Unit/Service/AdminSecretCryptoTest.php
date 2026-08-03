@@ -61,6 +61,21 @@ class AdminSecretCryptoTest extends TestCase
 			{
 				unset($this->store[$appName . ':' . $key]);
 			}
+
+			public function deleteAppValues(string $appName): void
+			{
+				$prefix = $appName . ':';
+				foreach (array_keys($this->store) as $k) {
+					if (str_starts_with($k, $prefix)) {
+						unset($this->store[$k]);
+					}
+				}
+			}
+
+			public function getSystemValue(string $key, $default = '')
+			{
+				return $default;
+			}
 		};
 	}
 

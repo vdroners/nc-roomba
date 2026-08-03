@@ -5,9 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.12.0] - 2026-08-03
+## [0.12.1] - 2026-08-03
+
+App Store readiness: uninstall cleanup, packaging pipeline, public-API
+hardening, and generic Roomba defaults (OpenClaw “Alfred” remains optional
+branding in docs / Talk integration only).
+
+### Added
+
+- **Uninstall cleanup** — `UninstallCleanupListener` drops `nc_roomba_*` tables
+  and `deleteAppValues` on `AppUninstallEvent`.
+- **App Store packaging** — `make appstore` / `appstore-sign`,
+  `.github/workflows/release.yml`, and multi-arch
+  `ghcr.io/vdroners/nc-roomba-bridge` via `.github/workflows/docker-bridge.yml`.
+- **Stranger install path** — root `INSTALL.md`, `.env.example`, and compose
+  defaulting to the published GHCR bridge image; wifi-helper paths/iface are
+  parameterized (no hardcoded lab paths).
+- **info.xml** — nested user/admin documentation, screenshot URL placeholders,
+  privacy language in the description (local MQTT only after onboard).
+
+### Changed
+
+- **Alert-log confinement** — replaced private `\OC::$configDir` with
+  `IConfig` `datadirectory` / `appdata_<instanceid>` roots.
+- **Default robot display name** — fallback `'Alfred'` → `'Roomba'` in PHP,
+  Vue onboarding, bridge mock, and Notifier.
+- Default compose discover subnet example is generic (`192.168.1.0/24`).
 
 ## [0.12.0] - 2026-08-03
+
 
 Alfred household ops polish (Phase 3): honest Soft-AP onboarding, schedule
 write confirmation, capability-gated settings, and mission footprint replay in

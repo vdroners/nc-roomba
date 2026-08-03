@@ -1,6 +1,6 @@
 {
 	"name": "vdroners/nc-roomba",
-	"description": "Nextcloud Roomba 960 (Alfred) control app",
+	"description": "Nextcloud Roomba control app (local MQTT bridge)",
 	"type": "project",
 	"license": "AGPL-3.0-or-later",
 	"autoload": {

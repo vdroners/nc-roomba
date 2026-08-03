@@ -187,7 +187,7 @@ class MissionService
 				$this->missions->update($open);
 
 				$robot = $this->robots->getRobot($robotId);
-				$name = $robot?->getName() ?? 'Alfred';
+				$name = $robot?->getName() ?? Application::DEFAULT_ROBOT_NAME;
 				if ($error !== 0) {
 					$decoded = $this->errors->decode($error, 0);
 					$this->notify->missionError($name, $decoded['title'], $error);
@@ -200,7 +200,7 @@ class MissionService
 		}
 
 		$robot = $this->robots->getRobot($robotId);
-		$name = $robot?->getName() ?? 'Alfred';
+		$name = $robot?->getName() ?? Application::DEFAULT_ROBOT_NAME;
 		static $binNotified = [];
 		static $battNotified = [];
 		$key = (string) $robotId;

@@ -4,16 +4,28 @@
 	<id>nc_roomba</id>
 	<name>NC Roomba</name>
 	<summary>Control your Roomba over local MQTT from Nextcloud</summary>
-	<description><![CDATA[NC Roomba — start, pause, dock, and monitor a Roomba via a private LAN MQTT bridge. Live mission stage, optional pose map, mission history, schedule editor, error decoder, and Nextcloud Notifications/Activity. No iRobot cloud after onboarding.]]></description>
-	<version>0.12.0</version>
+	<description><![CDATA[NC Roomba — start, pause, dock, and monitor a Roomba via a private LAN MQTT bridge.
+
+Live mission stage, optional pose map, mission history, schedule editor, error decoder, and Nextcloud Notifications/Activity.
+
+**Privacy:** after onboarding, the robot is controlled only over local MQTT on your LAN. This app does not use the iRobot cloud, does not send telemetry off-site, and does not require an iRobot account for day-to-day operation. Optional OpenClaw / Talk assistant integration is off by default.
+
+Requires the companion `nc-roomba-bridge` container (see INSTALL.md).]]></description>
+	<version>0.12.1</version>
 	<licence>AGPL-3.0-or-later</licence>
 	<author mail="dan@19labs.com">19labs</author>
 	<namespace>NcRoomba</namespace>
+	<documentation>
+		<user>https://github.com/vdroners/nc-roomba/blob/main/docs/OPERATOR.md</user>
+		<admin>https://github.com/vdroners/nc-roomba/blob/main/INSTALL.md</admin>
+	</documentation>
 	<category>tools</category>
 	<website>https://github.com/vdroners/nc-roomba</website>
 	<bugs>https://github.com/vdroners/nc-roomba/issues</bugs>
 	<repository type="git">https://github.com/vdroners/nc-roomba.git</repository>
-	<documentation>https://github.com/vdroners/nc-roomba/blob/main/docs/OPERATOR.md</documentation>
+	<screenshot>https://raw.githubusercontent.com/vdroners/nc-roomba/main/docs/screenshots/dashboard.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/vdroners/nc-roomba/main/docs/screenshots/history.png</screenshot>
+	<screenshot>https://raw.githubusercontent.com/vdroners/nc-roomba/main/docs/screenshots/settings.png</screenshot>
 	<dependencies>
 		<!-- No PHP upper bound, deliberately.
 		     A cap here is re-validated by `occ upgrade` on every app version bump.
@@ -29,14 +41,22 @@
 		<lib>curl</lib>
 		<nextcloud min-version="28" max-version="34"/>
 	</dependencies>
-	<navigations>
-		<navigation>
-			<name>NC Roomba</name>
-			<route>nc_roomba.page.index</route>
-			<icon>app.svg</icon>
-			<order>86</order>
-		</navigation>
-	</navigations>
+	<background-jobs>
+		<job>OCA\NcRoomba\BackgroundJob\TelemetrySampleJob</job>
+		<job>OCA\NcRoomba\BackgroundJob\RetentionPruneJob</job>
+	</background-jobs>
+	<repair-steps>
+		<post-migration>
+			<step>OCA\NcRoomba\Migration\PurgeEmptyTelemetryRepairStep</step>
+		</post-migration>
+	</repair-steps>
+	<commands>
+		<command>OCA\NcRoomba\Command\HomeWifi</command>
+	</commands>
+	<settings>
+		<admin-section>OCA\NcRoomba\Settings\AdminSection</admin-section>
+		<admin>OCA\NcRoomba\Settings\AdminSettings</admin>
+	</settings>
 	<activity>
 		<settings>
 			<setting>OCA\NcRoomba\Activity\Setting</setting>
@@ -45,20 +65,12 @@
 			<provider>OCA\NcRoomba\Activity\Provider</provider>
 		</providers>
 	</activity>
-	<commands>
-		<command>OCA\NcRoomba\Command\HomeWifi</command>
-	</commands>
-	<background-jobs>
-		<job>OCA\NcRoomba\BackgroundJob\TelemetrySampleJob</job>
-		<job>OCA\NcRoomba\BackgroundJob\RetentionPruneJob</job>
-	</background-jobs>
-	<settings>
-		<admin-section>OCA\NcRoomba\Settings\AdminSection</admin-section>
-		<admin>OCA\NcRoomba\Settings\AdminSettings</admin>
-	</settings>
-	<repair-steps>
-		<post-migration>
-			<step>OCA\NcRoomba\Migration\PurgeEmptyTelemetryRepairStep</step>
-		</post-migration>
-	</repair-steps>
+	<navigations>
+		<navigation>
+			<name>NC Roomba</name>
+			<route>nc_roomba.page.index</route>
+			<icon>app.svg</icon>
+			<order>86</order>
+		</navigation>
+	</navigations>
 </info>

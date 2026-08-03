@@ -31,7 +31,7 @@
 		<div v-if="step === 0" class="nc-roomba-wizard__pane">
 			<label>
 				Display name
-				<input v-model="form.name" type="text" placeholder="Alfred">
+				<input v-model="form.name" type="text" placeholder="Roomba">
 			</label>
 			<p class="nc-roomba-muted">Shown throughout the NC Roomba UI.</p>
 		</div>
@@ -201,7 +201,7 @@ export default {
 			resultBlid: '',
 			homeWifi: home,
 			form: {
-				name: robot.name || 'Alfred',
+				name: robot.name || 'Roomba',
 				home_ssid: home.ssid || 'Sheela 6',
 				home_pass: '',
 				timezone: home.timezone || 'America/Los_Angeles',

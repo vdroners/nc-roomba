@@ -143,26 +143,26 @@ class RobotService
 	}
 
 	/**
-	 * Directories the Alfred alert log is allowed to live in.
+	 * Directories the OpenClaw alert log is allowed to live in.
 	 *
-	 * The OpenClaw monitor writes into `<configdir>/nc_roomba/`, so the roots are
-	 * the app's own directory under the Nextcloud config and data trees — not
-	 * those trees wholesale, which would leave `config/config.php` (instance
-	 * secret, DB password) inside the confinement.
+	 * Uses only OCP {@see IConfig} system values (App Store: no `\OC::$configDir`).
+	 * Roots are the app's own subdirectory under the Nextcloud data tree and,
+	 * when present, under `appdata_<instanceid>/` — never those trees wholesale,
+	 * which would leave `config.php` / instance secrets inside the confinement.
+	 * Point OpenClaw's JSONL tail at e.g. `<datadirectory>/nc_roomba/alerts.jsonl`.
 	 *
 	 * @return list<string>
 	 */
 	private function alertLogRoots(): array
 	{
 		$parents = [];
-		// \OC::$configDir is the only exposed handle on the config directory;
-		// class_exists keeps this callable outside a booted Nextcloud (tests).
-		if (class_exists(\OC::class, false) && is_string(\OC::$configDir) && \OC::$configDir !== '') {
-			$parents[] = \OC::$configDir;
-		}
 		$dataDir = (string) $this->config->getSystemValue('datadirectory', '');
 		if ($dataDir !== '') {
 			$parents[] = $dataDir;
+			$instanceId = (string) $this->config->getSystemValue('instanceid', '');
+			if ($instanceId !== '') {
+				$parents[] = rtrim($dataDir, '/') . '/appdata_' . $instanceId;
+			}
 		}
 		$roots = [];
 		foreach ($parents as $parent) {
@@ -252,7 +252,7 @@ class RobotService
 			$robot->setCreatedAt($now);
 		}
 
-		$robot->setName((string) ($data['name'] ?? $robot->getName() ?: 'Alfred'));
+		$robot->setName((string) ($data['name'] ?? $robot->getName() ?: Application::DEFAULT_ROBOT_NAME));
 		$robot->setBlid((string) $data['blid']);
 		$robot->setHost((string) $data['host']);
 		$robot->setPort((int) ($data['port'] ?? 8883));
@@ -324,7 +324,7 @@ class RobotService
 			$state['floorplan_path'] = $robot->getFloorplanPath();
 		} else {
 			$state['robot_id'] = $robotId;
-			$state['name'] = (string) ($state['name'] ?? 'Alfred');
+			$state['name'] = (string) ($state['name'] ?? Application::DEFAULT_ROBOT_NAME);
 		}
 
 		$error = (int) ($state['error'] ?? 0);
@@ -358,8 +358,8 @@ class RobotService
 			'recovery' => [
 				'Close the iRobot mobile app (single MQTT connection).',
 				'Wait 30 seconds, then Retry connect.',
-				'Confirm DHCP reservation for Alfred.',
-				'From the host: nc -zv <alfred-ip> 8883',
+				'Confirm DHCP reservation for the robot.',
+				'From the host: nc -zv <robot-ip> 8883',
 			],
 		];
 
@@ -529,10 +529,10 @@ class RobotService
 			return ['ok' => false, 'error' => 'incomplete_credentials', 'body' => $body];
 		}
 		// Prefer the operator's explicit name; otherwise use the name the robot
-		// reports (robotname), only falling back to 'Alfred' as a last resort.
+		// reports (robotname), only falling back to 'Roomba' as a last resort.
 		$optName = trim((string) ($opts['name'] ?? ''));
 		$reported = trim((string) ($body['robotname'] ?? $body['name'] ?? ''));
-		$name = $optName !== '' ? $optName : ($reported !== '' ? $reported : 'Alfred');
+		$name = $optName !== '' ? $optName : ($reported !== '' ? $reported : Application::DEFAULT_ROBOT_NAME);
 		$sku = trim((string) ($body['sku'] ?? ''));
 		$robot = $this->upsertRobot([
 			'name' => $name,
@@ -639,9 +639,9 @@ class RobotService
 	 */
 	public function softapSetup(array $opts): array
 	{
-		$name = trim((string) ($opts['name'] ?? 'Alfred'));
+		$name = trim((string) ($opts['name'] ?? Application::DEFAULT_ROBOT_NAME));
 		if ($name === '') {
-			$name = 'Alfred';
+			$name = Application::DEFAULT_ROBOT_NAME;
 		}
 
 		$home = $this->getHomeWifiPrefs();
@@ -704,7 +704,7 @@ class RobotService
 		}
 
 		$robot = $this->upsertRobot([
-			'name' => $name !== '' ? $name : (string) ($body['name'] ?? 'Alfred'),
+			'name' => $name !== '' ? $name : (string) ($body['name'] ?? Application::DEFAULT_ROBOT_NAME),
 			'blid' => $blid,
 			'password' => $password,
 			'host' => $ip !== '' ? $ip : (string) ($opts['host'] ?? ''),

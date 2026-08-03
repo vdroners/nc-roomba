@@ -25,7 +25,7 @@ class Version000001Date20260725110000 extends SimpleMigrationStep
 		if (!$schema->hasTable('nc_roomba_robots')) {
 			$t = $schema->createTable('nc_roomba_robots');
 			$t->addColumn('id', Types::BIGINT, ['autoincrement' => true, 'notnull' => true, 'length' => 20]);
-			$t->addColumn('name', Types::STRING, ['notnull' => true, 'length' => 128, 'default' => 'Alfred']);
+			$t->addColumn('name', Types::STRING, ['notnull' => true, 'length' => 128, 'default' => 'Roomba']);
 			$t->addColumn('blid', Types::STRING, ['notnull' => true, 'length' => 64, 'default' => '']);
 			$t->addColumn('password_enc', Types::TEXT, ['notnull' => true, 'default' => '']);
 			$t->addColumn('host', Types::STRING, ['notnull' => true, 'length' => 255, 'default' => '']);

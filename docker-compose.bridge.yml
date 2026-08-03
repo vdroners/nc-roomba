@@ -1,5 +1,9 @@
 services:
   nc_roomba_bridge:
+    # Published multi-arch image (see .github/workflows/docker-bridge.yml).
+    # Override with NC_ROOMBA_BRIDGE_IMAGE=...; `docker compose build` still
+    # uses the local Dockerfile via the build: stanza.
+    image: ${NC_ROOMBA_BRIDGE_IMAGE:-ghcr.io/vdroners/nc-roomba-bridge:latest}
     build: ./bridge
     container_name: nc_roomba_bridge
     restart: unless-stopped
@@ -12,16 +16,14 @@ services:
       BLID: "${BLID:-}"
       PASSWORD: "${PASSWORD:-}"
       ROBOT_IP: "${ROBOT_IP:-}"
+      ROBOT_NAME: "${ROBOT_NAME:-Roomba}"
       FIRMWARE_VERSION: "${FIRMWARE_VERSION:-2}"
       # Comma-separated /24 bases (or CIDR) to TCP-scan for :8883 when UDP misses.
-      ROOMBA_DISCOVER_SUBNETS: "${ROOMBA_DISCOVER_SUBNETS:-10.0.0.0/24}"
-      # Host Soft-AP helper (systemd nc-roomba-wifi-helper on :8091).
+      ROOMBA_DISCOVER_SUBNETS: "${ROOMBA_DISCOVER_SUBNETS:-192.168.1.0/24}"
+      # Host Soft-AP helper (optional systemd unit on :8091).
       ROOMBA_WIFI_HELPER_URL: "${ROOMBA_WIFI_HELPER_URL:-http://host.docker.internal:8091}"
       ROOMBA_WIFI_HELPER_TOKEN: "${ROOMBA_WIFI_HELPER_TOKEN:-}"
       # Completed-mission journal, drained by Nextcloud via GET /missions.
-      # On a volume on purpose: an in-memory buffer would be emptied by
-      # `docker compose up --build`, which is exactly when a mission is most
-      # likely to be lost.
       ROOMBA_MISSION_LOG: "/data/missions.json"
     volumes:
       - roomba_bridge_data:/data

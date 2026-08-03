@@ -5,10 +5,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/media/4TB/nc-roomba/wifi-helper
-# REQUIRED (no leading '-'): the file carries ROOMBA_WIFI_HELPER_TOKEN. The
-# service refuses to start without a token, so a missing file must fail loudly
-# here rather than silently starting an unauthenticated root HTTP service.
+# Paths and iface come from EnvironmentFile — set ROOMBA_WIFI_HELPER_DIR,
+# ROOMBA_WIFI_IFACE, and optionally NODE_BIN for your host (no lab-specific
+# defaults). See INSTALL.md.
 EnvironmentFile=/etc/nc-roomba-wifi-helper.env
 Environment=NODE_ENV=production
 # No ROOMBA_WIFI_HELPER_BIND: the default binds 127.0.0.1 plus the docker0
@@ -16,8 +15,7 @@ Environment=NODE_ENV=production
 # container. Do NOT set 0.0.0.0 — that publishes a root service to the LAN.
 Environment=ROOMBA_WIFI_HELPER_PORT=8091
 Environment=ROOMBA_WIFI_HELPER_DOCKER_IFACE=docker0
-Environment=ROOMBA_WIFI_IFACE=wlp2s0
-ExecStart=/home/vdroners/.nvm/versions/node/v24.18.0/bin/node /media/4TB/nc-roomba/wifi-helper/index.js
+ExecStart=/bin/sh -c 'cd "${ROOMBA_WIFI_HELPER_DIR:?set ROOMBA_WIFI_HELPER_DIR in /etc/nc-roomba-wifi-helper.env}" && exec "${NODE_BIN:-node}" ./index.js'
 Restart=on-failure
 RestartSec=3
 # Exit 78 (EX_CONFIG) is "no token configured" — restarting cannot fix it.

@@ -8,7 +8,8 @@ DATE ?= $(shell date +%F)
 
 .PHONY: build test deploy ship bridge-up bridge-down bridge-test bridge-net-check \
 	bump-patch bump-minor gate-preflight gate-live gate-gui \
-	phpunit run-phpunit helper-install helper-test helper-up helper-down
+	phpunit run-phpunit helper-install helper-test helper-up helper-down \
+	appstore appstore-sign
 
 build:
 	cd "$(ROOT)" && npm run build
@@ -108,7 +109,13 @@ helper-install:
 		echo "Wrote ROOMBA_WIFI_HELPER_TOKEN to .env"; \
 	fi; \
 	echo "ROOMBA_WIFI_HELPER_TOKEN=$$token" | sudo tee /etc/nc-roomba-wifi-helper.env >/dev/null; \
-	echo "ROOMBA_WIFI_IFACE=wlp2s0" | sudo tee -a /etc/nc-roomba-wifi-helper.env >/dev/null; \
+	iface="$${ROOMBA_WIFI_IFACE:-}"; \
+	if [ -z "$$iface" ]; then \
+		echo "Set ROOMBA_WIFI_IFACE to your host Wi-Fi interface (e.g. wlan0) before helper-install"; \
+		exit 1; \
+	fi; \
+	echo "ROOMBA_WIFI_IFACE=$$iface" | sudo tee -a /etc/nc-roomba-wifi-helper.env >/dev/null; \
+	echo "ROOMBA_WIFI_HELPER_DIR=$${ROOMBA_WIFI_HELPER_DIR:-$(ROOT)wifi-helper}" | sudo tee -a /etc/nc-roomba-wifi-helper.env >/dev/null; \
 	sudo cp "$(ROOT)wifi-helper/systemd/nc-roomba-wifi-helper.service" /etc/systemd/system/; \
 	sudo systemctl daemon-reload; \
 	sudo systemctl enable --now nc-roomba-wifi-helper; \
@@ -183,3 +190,41 @@ gate-live:
 
 gate-gui:
 	bash "$(ROOT)tools/roomba-gui-gates.sh"
+
+VERSION := $(shell grep -oE '<version>[0-9]+\.[0-9]+\.[0-9]+</version>' "$(ROOT)appinfo/info.xml" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+STAGING := /tmp/$(APP_ID)-$(VERSION)
+TARBALL := /tmp/$(APP_ID)-$(VERSION).tar.gz
+
+# Self-contained App Store tarball (built js/css + composer vendor; no bridge/wifi-helper).
+# Built assets under js/ are included even when gitignored — `appstore` depends on `build`.
+appstore: build
+	rm -rf "$(STAGING)"
+	mkdir -p "$(STAGING)"
+	rsync -a --delete \
+		--exclude node_modules --exclude tests --exclude .git --exclude .github \
+		--exclude bridge --exclude wifi-helper --exclude src \
+		--exclude docs/plans --exclude .cursor --exclude .phpunit.cache \
+		--exclude .phpunit.result.cache --exclude .vitest-gate-stamp \
+		--exclude '*.map' --exclude coverage --exclude dist \
+		--exclude .env --exclude .env.* \
+		"$(ROOT)" "$(STAGING)/"
+	# Keep .env.example if present (rsync --exclude .env.* would drop it).
+	@if [ -f "$(ROOT).env.example" ]; then cp "$(ROOT).env.example" "$(STAGING)/.env.example"; fi
+	cd "$(STAGING)" && composer install --no-dev --no-interaction --optimize-autoloader
+	rm -rf "$(STAGING)/node_modules"
+	tar -czf "$(TARBALL)" -C /tmp "$(APP_ID)-$(VERSION)"
+	@echo "Release tarball: $(TARBALL)"
+
+appstore-sign: appstore
+	@test -n "$(NC_OCC)" || (echo "Set NC_OCC to your occ binary path" && exit 1)
+	@test -n "$$APP_PRIVATE_KEY" || (echo "Set APP_PRIVATE_KEY to private key file path" && exit 1)
+	@test -n "$$APP_PUBLIC_CRT" || (echo "Set APP_PUBLIC_CRT to certificate file path" && exit 1)
+	cp "$(ROOT)scripts/file_from_env.php" "$(STAGING)/file_from_env.php"
+	php "$(NC_OCC)" integrity:sign-app \
+		--privateKey="file://$(STAGING)/file_from_env.php" \
+		--certificate="file://$(STAGING)/file_from_env.php" \
+		$(APP_ID)
+	APP_PRIVATE_KEY="$$APP_PRIVATE_KEY" APP_PUBLIC_CRT="$$APP_PUBLIC_CRT" \
+	php "$(NC_OCC)" integrity:check-app $(APP_ID)
+	tar -czf "$(TARBALL)" -C /tmp "$(APP_ID)-$(VERSION)"
+	@echo "Signed tarball: $(TARBALL)"

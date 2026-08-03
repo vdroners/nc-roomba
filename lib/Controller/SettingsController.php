@@ -180,7 +180,7 @@ class SettingsController extends Controller
 			$robotId = isset($params['robot_id']) ? (int) $params['robot_id'] : 0;
 			try {
 				$this->robots->upsertRobot([
-					'name' => (string) ($params['name'] ?? 'Alfred'),
+					'name' => (string) ($params['name'] ?? 'Roomba'),
 					'blid' => (string) $params['blid'],
 					'password' => (string) ($params['password'] ?? ''),
 					'host' => (string) $params['host'],
@@ -207,7 +207,7 @@ class SettingsController extends Controller
 		}
 		$result = $this->robots->onboard([
 			'ip' => $ip,
-			'name' => (string) ($params['name'] ?? 'Alfred'),
+			'name' => (string) ($params['name'] ?? 'Roomba'),
 			'timeout' => (int) ($params['timeout'] ?? 60),
 		]);
 		return new JSONResponse($result, !empty($result['ok']) ? Http::STATUS_OK : Http::STATUS_BAD_GATEWAY);

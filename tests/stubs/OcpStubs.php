@@ -11,6 +11,11 @@ interface IConfig
 	public function setAppValue(string $appName, string $key, string $value): void;
 
 	public function deleteAppValue(string $appName, string $key): void;
+
+	public function deleteAppValues(string $appName): void;
+
+	/** @param mixed $default */
+	public function getSystemValue(string $key, $default = '');
 }
 
 interface IGroupManager

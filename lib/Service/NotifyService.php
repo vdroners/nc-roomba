@@ -81,7 +81,7 @@ class NotifyService
 			->setType(Application::APP_ID)
 			->setAuthor('system')
 			->setSubject($subject, $params)
-			->setObject('robot', 0, (string) ($params['robot'] ?? 'Alfred'))
+			->setObject('robot', 0, (string) ($params['robot'] ?? 'Roomba'))
 			->setTimestamp(time());
 		try {
 			$this->activity->publish($event);

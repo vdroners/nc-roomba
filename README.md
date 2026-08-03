@@ -1,17 +1,26 @@
 # NC Roomba
 
-![version](https://img.shields.io/badge/version-0.12.0-C4A574)
+![version](https://img.shields.io/badge/version-0.12.1-C4A574)
 ![license](https://img.shields.io/badge/license-AGPL--3.0--or--later-1a1a1c)
 
 Nextcloud app to control a Roomba over the **local LAN MQTT API** — no iRobot
 cloud in the control path. Remote access is via your Nextcloud URL; the private
 Node bridge never binds a public port.
 
-The UI brands itself around the **robot's display name** (Alfred on this
-install) with a butler-style charcoal / brass / cream look, a live mission stage
-on the Dashboard, and a Location map when the robot publishes pose.
+The UI brands itself around the **robot's display name** (default **Roomba**;
+rename freely — e.g. “Alfred” on a household install) with a butler-style
+charcoal / brass / cream look, a live mission stage on the Dashboard, and a
+Location map when the robot publishes pose.
+
+Optional OpenClaw / Nextcloud Talk “Alfred assistant” branding is documented in
+operator guides and is **off by default**.
 
 Tested on a **Roomba 960 (firmware 2)** against **Nextcloud 34 / PHP 8.5**.
+
+## Quick install
+
+See **[INSTALL.md](INSTALL.md)** for published GHCR bridge image, attaching
+`cloud_app` / `cloud_cron` to `nc-roomba-net`, and optional wifi-helper.
 
 ## Features
 

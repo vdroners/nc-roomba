@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace OCA\NcRoomba\AppInfo;
 
+use OCA\NcRoomba\Listener\UninstallCleanupListener;
 use OCA\NcRoomba\Middleware\ForbiddenMiddleware;
 use OCA\NcRoomba\Notification\Notifier;
+use OCP\App\Events\AppUninstallEvent;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -17,6 +19,8 @@ class Application extends App implements IBootstrap
 	public const OPERATOR_GROUP = 'roomba-operators';
 	public const DEFAULT_BRIDGE_URL = 'http://nc_roomba_bridge:8080';
 	public const DEFAULT_RETENTION_DAYS = 365;
+	/** Fallback robot display name when none is stored or reported. */
+	public const DEFAULT_ROBOT_NAME = 'Roomba';
 
 	public function __construct()
 	{
@@ -27,6 +31,10 @@ class Application extends App implements IBootstrap
 	{
 		$context->registerNotifierService(Notifier::class);
 		$context->registerMiddleware(ForbiddenMiddleware::class);
+		$context->registerEventListener(
+			AppUninstallEvent::class,
+			UninstallCleanupListener::class,
+		);
 	}
 
 	/**

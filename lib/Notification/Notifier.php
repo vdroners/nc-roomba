@@ -37,7 +37,7 @@ class Notifier implements INotifier
 
 		$l = $this->l10nFactory->get(Application::APP_ID, $languageCode);
 		$params = $notification->getSubjectParameters();
-		$robot = (string) ($params['robot'] ?? 'Alfred');
+		$robot = (string) ($params['robot'] ?? 'Roomba');
 
 		switch ($notification->getSubject()) {
 			case 'mission_complete':
