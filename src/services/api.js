@@ -93,7 +93,10 @@ export async function getSchedule(robotId = DEFAULT_ROBOT_ID) {
  */
 export async function setSchedule(week, robotId = DEFAULT_ROBOT_ID) {
 	const { data } = await axios.put(`${base()}/api/robots/${robotId}/schedule`, { week })
-	return data.week || data
+	return {
+		week: data.week || data,
+		confirmed: data.confirmed === true,
+	}
 }
 
 /**

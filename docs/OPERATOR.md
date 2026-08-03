@@ -116,7 +116,7 @@ never paste the iRobot cloud login.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Soft-AP scan empty | Robot not in HOME+SPOT Soft-AP | Re-enter Soft-AP; helper Wi‑Fi radio up |
-| Soft-AP joins but `gateway never responded` | 960 Soft-AP serving no setup service (associates, no DHCP/MQTT at `192.168.10.1`) | Full-minute battery pull, re-enter Soft-AP; if still dead, provision via iRobot app then use §1 hold-HOME |
+| Soft-AP joins but `gateway never responded` | 960 Soft-AP beacon only (associates, no DHCP/MQTT at `192.168.10.1`) | Full-minute battery pull, re-enter Soft-AP; if still dead, use §1 hold-HOME. Diagnose: `POST /wifi/softap/diagnose` on the wifi-helper (link, IP, ARP, ping, tcp8883). |
 | Soft-AP join but provision times out | IP stack not up / no spoken prompt | Wait for voice; retry; stay near robot |
 | `battery 0` / `not_ready 15`, but connected | Robot off the dock / not reporting charge | Dock the robot; values populate — this is not a connection fault |
 | Helper unauthorized / 502 | Helper down or bad token | `systemctl status nc-roomba-wifi-helper`; check `.env` token |

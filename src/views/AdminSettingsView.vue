@@ -2,22 +2,15 @@
 	<div class="nc-roomba-panel nc-roomba-admin">
 		<h3>{{ cfg.name || 'Roomba' }}</h3>
 		<p class="nc-roomba-muted">
-			Factory Soft-AP setup joins the robot to your home Wi‑Fi from this host, then opens
-			local MQTT. Give the robot a DHCP reservation so the LAN IP stays stable. Passwords
+			<strong>Recommended:</strong> if the robot is already on your home Wi‑Fi, use
+			<em>Auto discover</em> and <em>Retrieve credentials (hold HOME)</em> below — no
+			iRobot app required. Factory Soft-AP is a fallback when the robot is not on any
+			Wi‑Fi yet. Give the robot a DHCP reservation so the LAN IP stays stable. Passwords
 			are stored encrypted.
 		</p>
 
-		<SetupWizard
-			:config="wizardConfig"
-			:busy="busy"
-			@busy="busy = $event"
-			@report="report"
-			@applied="onWizardApplied"
-			@discover="scan"
-			@test="test" />
-
 		<details class="nc-roomba-admin__advanced" open>
-			<summary>Recommended if already on Wi‑Fi — Auto discover &amp; hold-HOME</summary>
+			<summary>Recommended — Auto discover &amp; hold-HOME</summary>
 
 			<NcNoteCard type="success">
 				If the robot is already on your home Wi‑Fi, this is the reliable, app-free way to
@@ -86,6 +79,23 @@
 					</button>
 				</li>
 			</ul>
+		</details>
+
+		<details class="nc-roomba-admin__advanced">
+			<summary>Advanced — factory Soft-AP wizard (fallback only)</summary>
+			<p class="nc-roomba-muted">
+				Use only when the robot cannot join Wi‑Fi any other way. Some Roomba 960 units
+				advertise a Soft-AP but serve no setup service — if provision stalls, use
+				hold-HOME above or a full-minute battery pull.
+			</p>
+			<SetupWizard
+				:config="wizardConfig"
+				:busy="busy"
+				@busy="busy = $event"
+				@report="report"
+				@applied="onWizardApplied"
+				@discover="scan"
+				@test="test" />
 		</details>
 
 		<fieldset class="nc-roomba-fieldset">

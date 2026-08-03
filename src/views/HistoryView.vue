@@ -92,6 +92,29 @@
 				:phases="selectedPhases"
 				:end-ts="selected.ended_at || null"
 				title="Phase bands" />
+			<div v-if="hasMapReplay" class="nc-roomba-panel" data-testid="mission-map-replay">
+				<h4>Mission footprint</h4>
+				<div class="nc-roomba-map">
+					<svg class="nc-roomba-map__svg" :viewBox="mapViewBox" role="img" aria-label="Mission footprint replay">
+						<rect
+							v-for="(cell, i) in mapCoveredCells"
+							:key="i"
+							class="nc-roomba-map__cell"
+							:x="cell.x - mapCellHalf"
+							:y="-cell.y - mapCellHalf"
+							:width="mapCellCm"
+							:height="mapCellCm"
+							:style="{ opacity: cell.opacity }" />
+						<circle class="nc-roomba-map__dock" cx="0" cy="0" r="34" />
+						<text class="nc-roomba-map__dock-label" x="0" y="8" text-anchor="middle">dock</text>
+						<polyline v-if="mapTrailPoints" :points="mapTrailPoints" class="nc-roomba-map__trail" />
+					</svg>
+				</div>
+				<p class="nc-roomba-muted">
+					Frozen at mission end — coordinates are centimetres from the dock in the
+					robot's frame at the time of the clean.
+				</p>
+			</div>
 		</div>
 	</div>
 </template>
@@ -104,7 +127,15 @@ import LifetimeStats from '../components/LifetimeStats.vue'
 import MissionTimeline from '../components/MissionTimeline.vue'
 import { exportMissionsUrl } from '../services/api.js'
 import { useRobotStore } from '../store/robot.js'
-import { durationLabel, timeLabel, timestampLabel } from '../utils/format.js'
+import {
+	coveredCellStyle,
+	durationLabel,
+	fitViewBox,
+	formatTrail,
+	hasMapReplay,
+	timeLabel,
+	timestampLabel,
+} from '../utils/format.js'
 
 export default {
 	name: 'HistoryView',
@@ -181,6 +212,35 @@ export default {
 				rows.push({ label: 'Recorded', value: source })
 			}
 			return rows
+		},
+		mapTrail() {
+			const mission = this.selected || {}
+			return mission.pose_trail || (mission.map_snapshot && mission.map_snapshot.pose_trail) || []
+		},
+		mapCellsRaw() {
+			const mission = this.selected || {}
+			return mission.covered_cells || (mission.map_snapshot && mission.map_snapshot.covered_cells) || []
+		},
+		mapCellCm() {
+			const mission = this.selected || {}
+			return Number(mission.cell_cm || (mission.map_snapshot && mission.map_snapshot.cell_cm)) || 25
+		},
+		mapCellHalf() {
+			return this.mapCellCm / 2
+		},
+		mapTrailPoints() {
+			return formatTrail(this.mapTrail)
+		},
+		mapCoveredCells() {
+			return coveredCellStyle(this.mapCellsRaw)
+		},
+		mapViewBox() {
+			const last = this.mapTrail.length ? this.mapTrail[this.mapTrail.length - 1] : null
+			const pose = last ? { x: last.x, y: last.y } : null
+			return fitViewBox(this.mapTrail, pose)
+		},
+		hasMapReplay() {
+			return hasMapReplay(this.mapTrail, this.mapCellsRaw)
 		},
 	},
 

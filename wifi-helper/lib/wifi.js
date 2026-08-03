@@ -270,6 +270,95 @@ async function joinSoftAp(ap) {
 }
 
 /**
+ * IPv4 assigned to the Soft-AP client on IFACE, if any.
+ *
+ * @returns {Promise<string|null>}
+ */
+async function clientIpv4OnIface() {
+	try {
+		const { stdout } = await run('ip', ['-4', 'addr', 'show', 'dev', IFACE])
+		const m = stdout.match(/inet\s+([\d.]+)/)
+		return m ? m[1] : null
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Probe link, IP, ARP, ping, and MQTT port while joined to a Soft-AP.
+ *
+ * @returns {Promise<object>}
+ */
+async function diagnoseSoftAp() {
+	if (process.env.ROOMBA_WIFI_HELPER_MOCK === '1') {
+		return {
+			ok: true,
+			mock: true,
+			iface: IFACE,
+			link: { connected: true, ssid: 'Roomba-1A2B3C4D5E6F7788' },
+			client_ip: SOFTAP_IP,
+			gateway: SOFTAP_GW,
+			arp: `${SOFTAP_GW} lladdr 80:c5:f2:c4:15:de REACHABLE`,
+			ping: true,
+			tcp8883: true,
+			classification: 'ready',
+		}
+	}
+
+	const link = await linkStatus()
+	const clientIp = await clientIpv4OnIface()
+	let arp = null
+	try {
+		const { stdout } = await run('ip', ['neigh', 'show', SOFTAP_GW, 'dev', IFACE])
+		arp = stdout.trim() || null
+	} catch {
+		arp = null
+	}
+
+	let ping = false
+	try {
+		await run('ping', ['-c', '1', '-W', '1', '-I', IFACE, SOFTAP_GW], { timeout: 5000 })
+		ping = true
+	} catch {
+		ping = false
+	}
+
+	let tcp8883 = false
+	try {
+		await new Promise((resolve, reject) => {
+			const net = require('node:net')
+			const sock = net.connect({ host: SOFTAP_GW, port: 8883 }, () => {
+				sock.end()
+				resolve()
+			})
+			sock.setTimeout(1500)
+			sock.on('timeout', () => { sock.destroy(); reject(new Error('timeout')) })
+			sock.on('error', reject)
+		})
+		tcp8883 = true
+	} catch {
+		tcp8883 = false
+	}
+
+	let classification = 'not_associated'
+	if (link.connected) {
+		classification = (ping || tcp8883) ? 'ready' : 'beacon_only'
+	}
+
+	return {
+		ok: true,
+		iface: IFACE,
+		link,
+		client_ip: clientIp,
+		gateway: SOFTAP_GW,
+		arp,
+		ping,
+		tcp8883,
+		classification,
+	}
+}
+
+/**
  * Wait until Soft-AP gateway answers ICMP or :8883.
  *
  * @param {number} [timeoutMs]
@@ -278,13 +367,22 @@ async function waitSoftApReady(timeoutMs = 60_000) {
 	if (process.env.ROOMBA_WIFI_HELPER_MOCK === '1') {
 		return { ok: true, mock: true, gateway: SOFTAP_GW, ready: true }
 	}
+
 	const deadline = Date.now() + timeoutMs
 	while (Date.now() < deadline) {
+		const link = await linkStatus()
+		if (!link.connected) {
+			const err = new Error(
+				`not associated with a Roomba Soft-AP on ${IFACE} — re-enter HOME+SPOT mode and retry Scan Soft-AP`,
+			)
+			err.status = 502
+			throw err
+		}
+
 		try {
 			await run('ping', ['-c', '1', '-W', '1', '-I', IFACE, SOFTAP_GW], { timeout: 5000 })
 			return { ok: true, gateway: SOFTAP_GW, ready: true }
 		} catch {
-			// try TCP 8883
 			try {
 				await new Promise((resolve, reject) => {
 					const net = require('node:net')
@@ -302,8 +400,10 @@ async function waitSoftApReady(timeoutMs = 60_000) {
 			}
 		}
 	}
+
+	// Associated but the gateway never answered — the 960 beacon-only failure mode.
 	const err = new Error(
-		`Soft-AP gateway ${SOFTAP_GW} never responded — wait for the robot to say you are connected, then retry`,
+		'960 Soft-AP beacon only — use hold-HOME or battery pull',
 	)
 	err.status = 504
 	throw err
@@ -355,6 +455,8 @@ module.exports = {
 	scanRoombaAps,
 	joinSoftAp,
 	waitSoftApReady,
+	diagnoseSoftAp,
+	clientIpv4OnIface,
 	leaveSoftAp,
 	linkStatus,
 }

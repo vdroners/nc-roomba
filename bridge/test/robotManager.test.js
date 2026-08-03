@@ -155,8 +155,9 @@ test('schedule round-trips and rejects malformed weeks', async () => {
 		h: [0, 15, 0, 0, 0, 0, 0],
 		m: [0, 30, 0, 0, 0, 0, 0],
 	}
-	const saved = await manager.setSchedule(week)
-	assert.deepEqual(saved, week)
+		const saved = await manager.setSchedule(week)
+	assert.equal(saved.confirmed, true)
+	assert.deepEqual({ cycle: saved.cycle, h: saved.h, m: saved.m }, week)
 	assert.deepEqual(await manager.getSchedule(), week)
 
 	await assert.rejects(() => manager.setSchedule({ cycle: ['none'], h: [0], m: [0] }), (err) => err.status === 400)

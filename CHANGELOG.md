@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.0] - 2026-08-03
+
+## [0.12.0] - 2026-08-03
+
+Alfred household ops polish (Phase 3): honest Soft-AP onboarding, schedule
+write confirmation, capability-gated settings, and mission footprint replay in
+History.
+
+### Added
+
+- **Soft-AP diagnose endpoint** — `POST /wifi/softap/diagnose` on the wifi-helper
+  reports link, client IP, ARP, ping, and TCP :8883 with a `beacon_only`
+  classification for the 960 silence case.
+- **Mission map replay** — `missions.map_json` stores `pose_trail` +
+  `covered_cells` at mission end; History detail renders the frozen footprint.
+- **Schedule write confirmation** — bridge readbacks `getWeek` after `setWeek`
+  and surfaces `confirmed` through PHP to the Settings UI (mirrors preferences).
+
+### Changed
+
+- **Admin onboarding** — hold-HOME / Auto discover is the default open path;
+  factory Soft-AP wizard is demoted to a collapsed Advanced block.
+- **Settings** — schedule editor and individual preference controls hide when
+  `state.capabilities` reports the robot does not support them.
+- **Soft-AP errors** — `waitSoftApReady` distinguishes not-associated vs
+  associated-but-silent (960 beacon-only) with operator-facing guidance.
+
+### Removed
+
+- Spot command mention from SetupWizard done step (Spot is not supported).
+
 ## [0.11.0] - 2026-08-03
 
 Nextcloud was upgraded to 34.0.2 on PHP 8.5 partway through this work; the

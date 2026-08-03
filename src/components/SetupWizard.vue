@@ -144,7 +144,7 @@
 			</p>
 			<ul class="nc-roomba-wizard__howto">
 				<li>Force-quit the iRobot app (single MQTT client).</li>
-				<li>Use Dashboard Clean / Dock / Spot from NC Roomba.</li>
+				<li>Use Dashboard Clean / Dock from NC Roomba.</li>
 				<li>To rotate the local password later, use Advanced → hold-HOME retrieval below.</li>
 			</ul>
 		</div>

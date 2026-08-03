@@ -6,22 +6,25 @@
 		</div>
 
 		<ScheduleWeekGrid
+			v-if="showSchedule"
 			:value="store.schedule"
 			:next="store.nextScheduled"
 			:disabled="!store.canOperate"
 			@save="saveSchedule" />
 
-		<div class="nc-roomba-panel" data-testid="preferences">
+		<p v-else-if="capabilitiesLoaded" class="nc-roomba-muted">
+			{{ robotName }} does not expose a weekly schedule over the local API.
+		</p>
+
+		<div v-if="showAnyPreferences" class="nc-roomba-panel" data-testid="preferences">
 			<h3>Cleaning preferences</h3>
 			<p v-if="!store.preferences" class="nc-roomba-muted">Reading preferences from {{ robotName }}…</p>
 
 			<template v-else>
-				<fieldset class="nc-roomba-fieldset">
+				<fieldset v-if="showCarpetBoost" class="nc-roomba-fieldset">
 					<legend>Carpet boost</legend>
-					<!-- Radio groups derive "checked" from model-value === value, so the
-					     current selection must be bound via :model-value, not :checked. -->
 					<NcCheckboxRadioSwitch
-						v-for="option in carpetOptions"
+						v-for="option in visibleCarpetOptions"
 						:key="option.value"
 						:model-value="prefs.carpet_boost"
 						:value="option.value"
@@ -33,7 +36,7 @@
 					</NcCheckboxRadioSwitch>
 				</fieldset>
 
-				<fieldset class="nc-roomba-fieldset">
+				<fieldset v-if="showMultiPass" class="nc-roomba-fieldset">
 					<legend>Cleaning passes</legend>
 					<NcCheckboxRadioSwitch
 						v-for="option in passOptions"
@@ -49,6 +52,7 @@
 				</fieldset>
 
 				<NcCheckboxRadioSwitch
+					v-if="showEdgeClean"
 					:checked="prefs.edge_clean"
 					:disabled="locked"
 					type="switch"
@@ -56,6 +60,7 @@
 					Edge clean (run the side brush along walls)
 				</NcCheckboxRadioSwitch>
 				<NcCheckboxRadioSwitch
+					v-if="showAlwaysFinish"
 					:checked="prefs.always_finish"
 					:disabled="locked"
 					type="switch"
@@ -71,6 +76,10 @@
 				</div>
 			</template>
 		</div>
+
+		<p v-else-if="capabilitiesLoaded" class="nc-roomba-muted">
+			{{ robotName }} does not expose cleaning preferences over the local API.
+		</p>
 
 		<p class="nc-roomba-muted nc-roomba-admin-pointer">
 			Robot discovery, onboarding and data retention live in
@@ -124,6 +133,7 @@ export default {
 			passOptions: PASS_OPTIONS,
 			prefs: editableCopy(null),
 			savingPrefs: false,
+			savingSchedule: false,
 			notice: '',
 			noticeType: 'success',
 		}
@@ -139,6 +149,36 @@ export default {
 				|| (boot.robot && boot.robot.name)
 				|| 'Roomba'
 		},
+		capabilities() {
+			return (this.store.state && this.store.state.capabilities) || {}
+		},
+		capabilitiesLoaded() {
+			return Boolean(this.store.state && this.store.state.capabilities)
+		},
+		showSchedule() {
+			return this.capabilities.schedule !== false
+		},
+		showCarpetBoost() {
+			return this.capabilities.carpet_boost !== false
+		},
+		showMultiPass() {
+			return this.capabilities.multi_pass !== false
+		},
+		showEdgeClean() {
+			return this.capabilities.edge_clean !== false
+		},
+		showAlwaysFinish() {
+			return this.capabilities.bin_full_detect !== false
+		},
+		showAnyPreferences() {
+			return this.showCarpetBoost || this.showMultiPass || this.showEdgeClean || this.showAlwaysFinish
+		},
+		visibleCarpetOptions() {
+			if (this.capabilities.eco === false) {
+				return this.carpetOptions.filter((o) => o.value !== 'eco')
+			}
+			return this.carpetOptions
+		},
 		locked() {
 			return !this.store.canOperate || this.savingPrefs
 		},
@@ -151,9 +191,6 @@ export default {
 		'store.preferences': {
 			deep: true,
 			handler(preferences) {
-				// Only adopt the robot's values when the user has no unsaved edits.
-				// Otherwise a routine live-state poll would overwrite the pending
-				// selection (the "it snaps back to auto" bug) before Save.
 				if (!this.prefsDirty) {
 					this.prefs = editableCopy(preferences)
 				}
@@ -162,9 +199,13 @@ export default {
 	},
 
 	async mounted() {
-		await this.store.loadSchedule()
-		await this.store.loadPreferences()
-		this.prefs = editableCopy(this.store.preferences)
+		if (this.showSchedule) {
+			await this.store.loadSchedule()
+		}
+		if (this.showAnyPreferences) {
+			await this.store.loadPreferences()
+			this.prefs = editableCopy(this.store.preferences)
+		}
 	},
 
 	methods: {
@@ -181,8 +222,22 @@ export default {
 		 * @param {object} week dorita980 week shape
 		 */
 		async saveSchedule(week) {
-			await this.store.saveSchedule(week)
-			this.report(this.store.error || `Schedule written to ${this.robotName}.`, this.store.error ? 'error' : 'success')
+			this.savingSchedule = true
+			try {
+				await this.store.saveSchedule(week)
+				if (this.store.error) {
+					this.report(this.store.error, 'error')
+				} else if (this.store.scheduleConfirmed) {
+					this.report(`${this.robotName} confirmed the new schedule.`, 'success')
+				} else {
+					this.report(
+						`Sent to ${this.robotName}. It has not confirmed yet — give it a moment, then reload Settings.`,
+						'warning',
+					)
+				}
+			} finally {
+				this.savingSchedule = false
+			}
 		},
 
 		async savePrefs() {
@@ -194,8 +249,6 @@ export default {
 				} else if (this.store.preferencesConfirmed) {
 					this.report(`${this.robotName} confirmed the new preferences.`, 'success')
 				} else {
-					// Sent, but the robot has not echoed it yet. Saying "written" here
-					// and showing the old value is what made this look broken.
 					this.report(
 						`Sent to ${this.robotName}. It has not confirmed yet — give it a moment, then Reload from robot.`,
 						'warning',

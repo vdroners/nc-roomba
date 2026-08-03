@@ -359,6 +359,19 @@ export function markerTransformFor(pose) {
 }
 
 /**
+ * Whether a mission detail row has enough map data to render a replay.
+ *
+ * @param {Array<{x:number,y:number}>} trail
+ * @param {Array<{x:number,y:number}>} cells
+ * @returns {boolean}
+ */
+export function hasMapReplay(trail, cells) {
+	const t = Array.isArray(trail) ? trail : []
+	const c = Array.isArray(cells) ? cells : []
+	return t.length >= 2 || c.length > 0
+}
+
+/**
  * Whether Nextcloud can currently reach the bridge at all.
  *
  * Keyed off `connection_health.bridge_ok` rather than off missing readings: an

@@ -312,7 +312,7 @@ describe('robot store', () => {
 	it('round-trips the schedule and preferences through the API layer', async () => {
 		const week = { cycle: ['none', 'start', 'none', 'none', 'none', 'none', 'none'], h: [0, 15, 0, 0, 0, 0, 0], m: [0, 0, 0, 0, 0, 0, 0] }
 		api.getSchedule.mockResolvedValue(week)
-		api.setSchedule.mockResolvedValue(week)
+		api.setSchedule.mockResolvedValue({ week, confirmed: true })
 		api.getPreferences.mockResolvedValue({ carpet_boost: 'auto', edge_clean: true })
 		api.setPreferences.mockResolvedValue({
 			preferences: { carpet_boost: 'eco', edge_clean: true },
@@ -325,6 +325,8 @@ describe('robot store', () => {
 		expect(await store.loadSchedule()).toEqual(week)
 		await store.saveSchedule(week)
 		expect(api.setSchedule).toHaveBeenCalledWith(week, 1)
+		expect(store.scheduleConfirmed).toBe(true)
+		expect(store.schedule).toEqual(week)
 
 		await store.loadPreferences()
 		expect(store.preferences.carpet_boost).toBe('auto')
@@ -366,6 +368,19 @@ describe('robot store', () => {
 
 		expect(store.preferencesConfirmed).toBe(true)
 		expect(store.preferences.cleaning_passes).toBe('one')
+	})
+
+	it('records an unconfirmed schedule write without treating it as settled', async () => {
+		const week = { cycle: ['start', 'none', 'none', 'none', 'none', 'none', 'none'], h: [9, 0, 0, 0, 0, 0, 0], m: [0, 0, 0, 0, 0, 0, 0] }
+		api.setSchedule.mockResolvedValue({ week, confirmed: false })
+
+		const store = useRobotStore()
+		await store.init({}, { live: false })
+		await store.saveSchedule(week)
+
+		expect(store.scheduleConfirmed).toBe(false)
+		expect(store.schedule).toEqual(week)
+		expect(store.error).toBeNull()
 	})
 
 	it('loads mission history and detail', async () => {

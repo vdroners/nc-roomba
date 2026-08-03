@@ -62,6 +62,8 @@ export const useRobotStore = defineStore('robot', {
 		selectedMission: null,
 		/** @type {object|null} dorita980 week shape */
 		schedule: null,
+		/** @type {boolean} did the robot echo the last schedule write back? */
+		scheduleConfirmed: true,
 		/** @type {object|null} */
 		preferences: null,
 		/** @type {Array<{ ts: number, phase: string, cycle: string|null }>} live phase bands */
@@ -435,7 +437,9 @@ export const useRobotStore = defineStore('robot', {
 		 */
 		async saveSchedule(week) {
 			try {
-				this.schedule = await api.setSchedule(week, this.robotId)
+				const { week: saved, confirmed } = await api.setSchedule(week, this.robotId)
+				this.schedule = saved
+				this.scheduleConfirmed = confirmed
 				this.error = null
 			} catch (err) {
 				this.error = errorMessage(err, 'Could not save the schedule')

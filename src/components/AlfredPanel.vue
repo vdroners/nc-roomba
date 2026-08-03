@@ -67,7 +67,12 @@ export default {
 			return [
 				'@alfred roomba status',
 				'@alfred roomba clean',
+				'@alfred roomba pause',
+				'@alfred roomba resume',
 				'@alfred roomba dock',
+				'@alfred roomba find',
+				'@alfred roomba stop',
+				'@alfred roomba help',
 			]
 		},
 	},

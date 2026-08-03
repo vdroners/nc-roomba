@@ -40,6 +40,8 @@ use OCP\AppFramework\Db\Entity;
  * @method void setNMssnStart(?int $nMssnStart)
  * @method int|null getNMssnEnd()
  * @method void setNMssnEnd(?int $nMssnEnd)
+ * @method string|null getMapJson()
+ * @method void setMapJson(?string $mapJson)
  */
 class Mission extends Entity implements JsonSerializable
 {
@@ -61,6 +63,8 @@ class Mission extends Entity implements JsonSerializable
 	protected $source;
 	protected $nMssnStart;
 	protected $nMssnEnd;
+	/** JSON snapshot: pose_trail, covered_cells, cell_cm at mission end. */
+	protected $mapJson;
 
 	public function __construct()
 	{
@@ -80,6 +84,7 @@ class Mission extends Entity implements JsonSerializable
 
 	public function jsonSerialize(): array
 	{
+		$map = $this->decodeMapSnapshot();
 		return [
 			'id' => (int) $this->id,
 			'robot_id' => (int) $this->robotId,
@@ -103,6 +108,25 @@ class Mission extends Entity implements JsonSerializable
 			'source' => $this->source !== null ? (string) $this->source : null,
 			'n_mssn_start' => $this->nMssnStart !== null ? (int) $this->nMssnStart : null,
 			'n_mssn_end' => $this->nMssnEnd !== null ? (int) $this->nMssnEnd : null,
+			'map_snapshot' => $map,
+			'pose_trail' => is_array($map['pose_trail'] ?? null) ? $map['pose_trail'] : [],
+			'covered_cells' => is_array($map['covered_cells'] ?? null) ? $map['covered_cells'] : [],
+			'cell_cm' => is_numeric($map['cell_cm'] ?? null) ? (int) $map['cell_cm'] : null,
 		];
+	}
+
+	/** @return array<string, mixed>|null */
+	private function decodeMapSnapshot(): ?array
+	{
+		$raw = $this->mapJson;
+		if ($raw === null || $raw === '') {
+			return null;
+		}
+		try {
+			$decoded = json_decode((string) $raw, true, 512, JSON_THROW_ON_ERROR);
+		} catch (\JsonException) {
+			return null;
+		}
+		return is_array($decoded) ? $decoded : null;
 	}
 }

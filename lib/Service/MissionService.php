@@ -180,6 +180,10 @@ class MissionService
 				$open->setBatteryEnd($battery);
 				$open->setErrorCode($error);
 				$open->setResult($error !== 0 ? 'error' : 'complete');
+				$map = self::mapSnapshotFromState($state);
+				if ($map !== null) {
+					$open->setMapJson(json_encode($map, JSON_THROW_ON_ERROR));
+				}
 				$this->missions->update($open);
 
 				$robot = $this->robots->getRobot($robotId);
@@ -299,6 +303,10 @@ class MissionService
 		$mission->setBridgeSeq($seq);
 		$mission->setSource('bridge');
 		$mission->setCreatedAt(time());
+		$map = self::mapSnapshotFromRecord($record);
+		if ($map !== null) {
+			$mission->setMapJson(json_encode($map, JSON_THROW_ON_ERROR));
+		}
 		$mission = $this->missions->insert($mission);
 
 		// One physical run can be caught by all three recorders. The bridge saw
@@ -565,6 +573,42 @@ class MissionService
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * @param array<string, mixed> $state normalized bridge DTO
+	 * @return array<string, mixed>|null
+	 */
+	private static function mapSnapshotFromState(array $state): ?array
+	{
+		$trail = is_array($state['pose_trail'] ?? null) ? $state['pose_trail'] : [];
+		$cells = is_array($state['covered_cells'] ?? null) ? $state['covered_cells'] : [];
+		if ($trail === [] && $cells === []) {
+			return null;
+		}
+		return [
+			'pose_trail' => $trail,
+			'covered_cells' => $cells,
+			'cell_cm' => is_numeric($state['cell_cm'] ?? null) ? (int) $state['cell_cm'] : 25,
+		];
+	}
+
+	/**
+	 * @param array<string, mixed> $record bridge journal row
+	 * @return array<string, mixed>|null
+	 */
+	private static function mapSnapshotFromRecord(array $record): ?array
+	{
+		$trail = is_array($record['pose_trail'] ?? null) ? $record['pose_trail'] : [];
+		$cells = is_array($record['covered_cells'] ?? null) ? $record['covered_cells'] : [];
+		if ($trail === [] && $cells === []) {
+			return null;
+		}
+		return [
+			'pose_trail' => $trail,
+			'covered_cells' => $cells,
+			'cell_cm' => is_numeric($record['cell_cm'] ?? null) ? (int) $record['cell_cm'] : 25,
+		];
 	}
 
 	/**

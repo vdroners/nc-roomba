@@ -1,6 +1,6 @@
 # NC Roomba
 
-![version](https://img.shields.io/badge/version-0.11.0-C4A574)
+![version](https://img.shields.io/badge/version-0.12.0-C4A574)
 ![license](https://img.shields.io/badge/license-AGPL--3.0--or--later-1a1a1c)
 
 Nextcloud app to control a Roomba over the **local LAN MQTT API** — no iRobot
@@ -123,14 +123,15 @@ robot that cannot be provisioned any other way, and is known to stall on the
 | fw2 TLS | The 960 needs the bridge TLS shim (`bridge/lib/tlsLegacy.js`) — already baked in |
 
 > ⚠️ **`docker network connect` does not survive a container recreate.** Any
-> `docker compose up` on the cloud stack detaches `cloud_app` and `cloud_cron`
+> `docker compose up` on the cloud stack used to detach `cloud_app` and `cloud_cron`
 > from `nc-roomba-net`. When that happens the app shows a "can't reach the robot"
 > banner and mission history stops being written — silently, because from
 > Nextcloud's point of view the bridge simply is not there. `make bridge-up`
 > reattaches both and `make bridge-net-check` fails loudly if either cannot reach
-> the bridge. The ops container-watchdog also re-attaches them every five
-> minutes. The durable home for these attachments is the cloud stack's own
-> compose file.
+> the bridge. **Durable fix:** `/media/4TB/cloud/docker-compose.yml` declares
+> `nc-roomba-net` (and `nc-litter-net`) as external networks on `cloud_app` and
+> `cloud_cron`, so recreates keep bridge DNS. The ops container-watchdog remains
+> a belt-and-suspenders re-attach every five minutes.
 
 ### Dependency caps
 

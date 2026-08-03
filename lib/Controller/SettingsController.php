@@ -79,9 +79,11 @@ class SettingsController extends Controller
 		$params = $this->request->getParams();
 		$week = is_array($params['week'] ?? null) ? $params['week'] : $params;
 		$resp = $this->bridge->setSchedule(is_array($week) ? $week : [], $id);
+		$body = is_array($resp['body'] ?? null) ? $resp['body'] : [];
 		return new JSONResponse([
 			'ok' => $resp['ok'],
-			'body' => $resp['body'],
+			'confirmed' => (bool) ($body['confirmed'] ?? false),
+			'week' => $body['week'] ?? $body,
 			'error' => $resp['error'],
 			'by' => $user->getUID(),
 		], $resp['ok'] ? Http::STATUS_OK : Http::STATUS_BAD_GATEWAY);

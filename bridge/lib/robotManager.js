@@ -52,6 +52,8 @@ const LOCAL_WRITE_GRACE_MS = 15_000
 /** Budget for waiting on the robot to echo a preference write. */
 const PREF_ECHO_TIMEOUT_MS = 8_000
 const PREF_ECHO_POLL_MS = 400
+const SCHEDULE_ECHO_TIMEOUT_MS = 8_000
+const SCHEDULE_ECHO_POLL_MS = 400
 
 /**
  * @param {unknown} value
@@ -726,7 +728,7 @@ class RobotManager extends EventEmitter {
 
 	/**
 	 * @param {object} week `{ cycle: string[7], h: number[7], m: number[7] }`
-	 * @returns {Promise<object>} schedule after the write
+	 * @returns {Promise<object>} schedule after the write plus `confirmed`
 	 */
 	async setSchedule(week) {
 		const invalid = this.#validateWeek(week)
@@ -736,7 +738,7 @@ class RobotManager extends EventEmitter {
 		if (this.mock) {
 			this.raw.cleanSchedule = week
 			this.#publish()
-			return this.getSchedule()
+			return { ...(await this.getSchedule()), confirmed: true }
 		}
 		if (!this.robot || typeof this.robot.setWeek !== 'function') {
 			throw this.#httpError(503, 'not connected to the robot')
@@ -744,7 +746,58 @@ class RobotManager extends EventEmitter {
 		await this.robot.setWeek(week)
 		this.raw.cleanSchedule = week
 		this.#publish()
-		return this.getSchedule()
+		const confirmed = await this.#awaitScheduleEcho(week)
+		return { ...(await this.getSchedule()), confirmed }
+	}
+
+	/**
+	 * Poll until the robot reports the week we asked for.
+	 *
+	 * @param {object} week dorita980 week shape just written
+	 * @returns {Promise<boolean>}
+	 */
+	async #awaitScheduleEcho(week) {
+		const deadline = Date.now() + SCHEDULE_ECHO_TIMEOUT_MS
+		while (Date.now() < deadline) {
+			await new Promise((resolve) => setTimeout(resolve, SCHEDULE_ECHO_POLL_MS))
+			let live = null
+			try {
+				live = await this.robot.getWeek()
+			} catch {
+				return false
+			}
+			if (live && this.#weeksEqual(live, week)) {
+				this.raw.cleanSchedule = live
+				this.#publish()
+				return true
+			}
+		}
+		return false
+	}
+
+	/**
+	 * @param {object|null} a
+	 * @param {object|null} b
+	 * @returns {boolean}
+	 */
+	#weeksEqual(a, b) {
+		if (!a || !b) {
+			return false
+		}
+		for (const key of ['cycle', 'h', 'm']) {
+			if (!Array.isArray(a[key]) || !Array.isArray(b[key])) {
+				return false
+			}
+			if (a[key].length !== 7 || b[key].length !== 7) {
+				return false
+			}
+			for (let i = 0; i < 7; i++) {
+				if (a[key][i] !== b[key][i]) {
+					return false
+				}
+			}
+		}
+		return true
 	}
 
 	/**
@@ -1219,9 +1272,11 @@ class RobotManager extends EventEmitter {
 				battery_end: numOrNull(this.raw.batPct),
 				n_mssn_start: meta.n_mssn_start ?? null,
 				n_mssn_end: nMssnEnd,
-				trail_points: Array.isArray(state.pose_trail) ? state.pose_trail.length : 0,
-				covered_cells: Array.isArray(state.covered_cells) ? state.covered_cells.length : 0,
+				pose_trail: Array.isArray(state.pose_trail) ? state.pose_trail : [],
+				covered_cells: Array.isArray(state.covered_cells) ? state.covered_cells : [],
 				cell_cm: CELL_CM,
+				trail_points: Array.isArray(state.pose_trail) ? state.pose_trail.length : 0,
+				covered_cells_count: Array.isArray(state.covered_cells) ? state.covered_cells.length : 0,
 				source: 'bridge',
 			})
 			this.log(`mission journalled seq=${record.seq} cycle=${record.cycle} error=${record.error_code}`)

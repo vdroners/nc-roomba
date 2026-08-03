@@ -176,6 +176,10 @@ app.post('/wifi/softap/leave', requireToken, wrap(async (req, res) => {
 	res.json(await wifi.leaveSoftAp())
 }))
 
+app.post('/wifi/softap/diagnose', requireToken, wrap(async (req, res) => {
+	res.json(await wifi.diagnoseSoftAp())
+}))
+
 app.post('/wifi/softap/provision', requireToken, wrap(async (req, res) => {
 	const body = req.body || {}
 	const robotSsid = body.robot_ssid || body.softap_ssid || ''

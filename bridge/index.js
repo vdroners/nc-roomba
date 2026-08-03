@@ -184,7 +184,9 @@ app.get('/schedule', wrap(async (req, res) => {
 
 app.post('/schedule', wrap(async (req, res) => {
 	const body = req.body || {}
-	res.json({ ok: true, week: await manager.setSchedule(body.week || body) })
+	const result = await manager.setSchedule(body.week || body)
+	const { confirmed, ...week } = result
+	res.json({ ok: true, confirmed: confirmed !== false, week })
 }))
 
 app.get('/bbrun', wrap(async (req, res) => {

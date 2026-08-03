@@ -74,6 +74,13 @@ test('health + token-gated scan/provision in mock mode', async () => {
 		assert.equal(prov.status, 200)
 		assert.equal(prov.json.blid, '1A2B3C4D5E6F7788')
 		assert.match(prov.json.password, /^:1:/)
+
+		const diag = await request(server, 'POST', '/wifi/softap/diagnose', {}, {
+			'x-roomba-helper-token': 'test-token',
+		})
+		assert.equal(diag.status, 200)
+		assert.equal(diag.json.classification, 'ready')
+		assert.equal(diag.json.mock, true)
 	} finally {
 		await new Promise((r) => server.close(r))
 	}
