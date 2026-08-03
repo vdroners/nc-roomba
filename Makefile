@@ -173,8 +173,13 @@ gate-preflight:
 	@test -n "$$(docker ps -q -f name=$(CONTAINER))" || (echo "Container not running — skip API gates" && exit 0)
 	docker exec $(CONTAINER) php $(REMOTE)/tools/roomba-api-gates.php
 
+# The script reads mocked-ness from the bridge itself rather than from the
+# environment, because it commands the robot: setting ROOMBA_MOCK=1 here used to
+# imply safety while the script ignored it entirely, so `make gate-live` against
+# the real 960 would start a cleaning mission and rewrite the weekly schedule.
+# Pass ROOMBA_ALLOW_LIVE_ROBOT=1 to opt into the destructive gates on purpose.
 gate-live:
-	ROOMBA_MOCK=$${ROOMBA_MOCK:-1} bash "$(ROOT)tools/roomba-live-gates.sh"
+	bash "$(ROOT)tools/roomba-live-gates.sh"
 
 gate-gui:
 	bash "$(ROOT)tools/roomba-gui-gates.sh"
