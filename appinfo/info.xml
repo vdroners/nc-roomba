@@ -11,7 +11,7 @@ Live mission stage, optional pose map, mission history, schedule editor, error d
 **Privacy:** after onboarding, the robot is controlled only over local MQTT on your LAN. This app does not use the iRobot cloud, does not send telemetry off-site, and does not require an iRobot account for day-to-day operation. Optional OpenClaw / Talk assistant integration is off by default.
 
 Requires the companion `nc-roomba-bridge` container (see INSTALL.md).]]></description>
-<version>0.12.1</version>
+<version>0.12.2</version>
 <licence>AGPL-3.0-or-later</licence>
 <author mail="dan@19labs.com">19labs</author>
 <namespace>NcRoomba</namespace>
