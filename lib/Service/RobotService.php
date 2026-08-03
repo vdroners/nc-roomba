@@ -171,6 +171,31 @@ class RobotService
 		return $roots;
 	}
 
+	/**
+	 * The robot's own odometer as it stood when this app first ran.
+	 *
+	 * Recorded once by PurgeEmptyTelemetryRepairStep so progress can be scored
+	 * from a known point. This robot had ~1,800 missions and 925 hours behind it
+	 * at install, so lifetime-scored achievements unlock the moment the app is
+	 * deployed — sixteen of twenty-six did, including one claiming to have
+	 * witnessed "the very first cleaning mission". The baseline is what lets a
+	 * badge measure what the app actually saw.
+	 *
+	 * Returns null on an install that has no baseline yet; callers must treat that
+	 * as "score nothing" rather than as zero.
+	 *
+	 * @return array{recorded_at:int,bbmssn:?array,bbrun:?array}|null
+	 */
+	public function getMissionBaseline(): ?array
+	{
+		$raw = trim($this->config->getAppValue(Application::APP_ID, 'mission_baseline_json', ''));
+		if ($raw === '') {
+			return null;
+		}
+		$decoded = json_decode($raw, true);
+		return is_array($decoded) ? $decoded : null;
+	}
+
 	/** @return Robot[] */
 	public function listRobots(): array
 	{

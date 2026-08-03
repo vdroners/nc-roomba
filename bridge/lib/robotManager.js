@@ -43,6 +43,17 @@ const CELL_CM = 25 // covered-cell grid size (~robot swath); also the est-area u
 const CLEANING_CYCLES = new Set(['clean', 'quick', 'spot'])
 
 /**
+ * How long a just-written preference is protected from a stale upstream refresh.
+ * Comfortably longer than the observed echo latency (<2 s on a real 960), short
+ * enough that a value the robot genuinely refused reverts visibly rather than
+ * being masked forever.
+ */
+const LOCAL_WRITE_GRACE_MS = 15_000
+/** Budget for waiting on the robot to echo a preference write. */
+const PREF_ECHO_TIMEOUT_MS = 8_000
+const PREF_ECHO_POLL_MS = 400
+
+/**
  * @param {unknown} value
  * @returns {number|null} a finite number, or null (never NaN, never 0-for-absent)
  */
@@ -159,6 +170,8 @@ class RobotManager extends EventEmitter {
 		this.lastError = null
 		this.lastCommand = null
 		this.missionStartedAt = null
+		/** @type {{values:object,at:number}|null} freshly-written prefs (see #noteLocalWrite) */
+		this.localWrite = null
 		// Mission-scoped pose trail + covered-cell dwell map — reset on new mission.
 		this.poseTrail = []
 		this.coveredCells = new Map() // "gx,gy" -> dwell count
@@ -622,17 +635,80 @@ class RobotManager extends EventEmitter {
 
 		if (this.mock) {
 			Object.assign(this.raw, delta)
+			this.#noteLocalWrite(delta)
 			this.#publish()
-			return this.getPreferences()
+			return { ...(await this.getPreferences()), confirmed: true }
 		}
 
 		if (!this.robot || typeof this.robot.setPreferences !== 'function') {
 			throw this.#httpError(503, 'not connected to the robot')
 		}
+
 		await this.robot.setPreferences(delta)
 		Object.assign(this.raw, delta)
+		// Protect the freshly-written keys from being overwritten by dorita980's
+		// (still stale) cache on the very next read -- see #noteLocalWrite.
+		this.#noteLocalWrite(delta)
 		this.#publish()
-		return this.getPreferences()
+
+		// Wait for the robot to echo the change back rather than guessing.
+		// Measured on a real 960: the echo lands in well under two seconds.
+		const confirmed = await this.#awaitPreferenceEcho(delta)
+		return { ...(await this.getPreferences()), confirmed }
+	}
+
+	/**
+	 * Remember a just-written preference so a stale refresh cannot undo it.
+	 *
+	 * `dorita980.getPreferences()` does not fetch anything: it resolves as soon as
+	 * five always-present keys exist in its own accumulated `robotState` and hands
+	 * back that whole cache. Writing a delta does not update that cache -- only the
+	 * robot's next state publish does. So the read immediately after a write
+	 * returned the PRE-CHANGE values, `#refresh` merged them over the delta we had
+	 * just applied, and the app faithfully painted the old setting back. Operators
+	 * reported "one pass doesn't save" twice; both previous fixes were in the UI,
+	 * which could not win against a data source serving stale values.
+	 *
+	 * Deliberately narrow: only the keys just written, and only for
+	 * LOCAL_WRITE_GRACE_MS. A blanket "local always wins" would also mask a
+	 * genuine rejection by the robot, which is the opposite of what we want.
+	 *
+	 * @param {object} delta the raw robot fields just written
+	 */
+	#noteLocalWrite(delta) {
+		this.localWrite = { values: { ...delta }, at: Date.now() }
+	}
+
+	/**
+	 * Poll until the robot reports the values we asked for.
+	 *
+	 * Cannot use `waitPreferences`/`getRobotState` as a wait primitive: they
+	 * resolve on a key being *present*, not on it changing, and these keys are
+	 * always present. So compare values on each poll instead.
+	 *
+	 * @param {object} delta the raw robot fields just written
+   * @returns {Promise<boolean>} true when the robot confirmed every field
+	 */
+	async #awaitPreferenceEcho(delta) {
+		const deadline = Date.now() + PREF_ECHO_TIMEOUT_MS
+		const keys = Object.keys(delta)
+		while (Date.now() < deadline) {
+			await new Promise((resolve) => setTimeout(resolve, PREF_ECHO_POLL_MS))
+			let live = null
+			try {
+				live = await this.robot.getRobotState(keys)
+			} catch {
+				return false
+			}
+			if (live && keys.every((k) => live[k] === delta[k])) {
+				// The robot agrees; the local guard is no longer needed.
+				this.localWrite = null
+				Object.assign(this.raw, delta)
+				this.#publish()
+				return true
+			}
+		}
+		return false
 	}
 
 	/**
@@ -1235,6 +1311,35 @@ class RobotManager extends EventEmitter {
 	 * @param {number} [timeoutMs]
 	 * @returns {Promise<any|null>}
 	 */
+	/**
+	 * Strip fields from an upstream snapshot that we have just written ourselves.
+	 *
+	 * dorita980's cache lags a write by up to a second or two, and merging it
+	 * wholesale reverted the operator's change. Only the keys written inside the
+	 * grace window are withheld; everything else in the snapshot is authoritative
+	 * and passes through untouched.
+	 *
+	 * @param {object} value upstream robotState snapshot
+	 * @returns {object} the snapshot minus keys covered by a fresh local write
+	 */
+	#withoutStaleWrites(value) {
+		const pending = this.localWrite
+		if (!pending) {
+			return value
+		}
+		if (Date.now() - pending.at > LOCAL_WRITE_GRACE_MS) {
+			this.localWrite = null
+			return value
+		}
+		const filtered = { ...value }
+		for (const key of Object.keys(pending.values)) {
+			if (filtered[key] !== pending.values[key]) {
+				delete filtered[key]
+			}
+		}
+		return filtered
+	}
+
 	async #refresh(fn, timeoutMs = 5000) {
 		try {
 			const value = await Promise.race([
@@ -1242,7 +1347,7 @@ class RobotManager extends EventEmitter {
 				new Promise((resolve) => setTimeout(() => resolve(null), timeoutMs)),
 			])
 			if (value && typeof value === 'object' && value.cleanMissionStatus) {
-				this.raw = Object.assign({}, this.raw, value)
+				this.raw = Object.assign({}, this.raw, this.#withoutStaleWrites(value))
 				this.updatedAt = new Date().toISOString()
 			}
 			return value

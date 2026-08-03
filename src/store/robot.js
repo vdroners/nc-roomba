@@ -56,6 +56,8 @@ export const useRobotStore = defineStore('robot', {
 		bootstrap: {},
 		/** @type {object[]} */
 		missions: [],
+		/** @type {boolean} did the robot echo the last preference write back? */
+		preferencesConfirmed: true,
 		/** @type {object|null} */
 		selectedMission: null,
 		/** @type {object|null} dorita980 week shape */
@@ -115,6 +117,27 @@ export const useRobotStore = defineStore('robot', {
 		softwareVersion: (state) => (state.state && state.state.software_version) || '',
 		sku: (state) => (state.state && state.state.sku) || '',
 		alfred: (state) => (state.bootstrap && state.bootstrap.alfred) || { enabled: false, talk_room: '' },
+
+		/**
+		 * The robot's odometer at install time, or null on an install with none.
+		 *
+		 * Achievements added after 0.10.0 score from here so they measure what this
+		 * app witnessed. Without it, a robot arriving with ~1,800 missions behind it
+		 * unlocks most of the wall on day one.
+		 */
+		missionBaseline: (state) => (state.bootstrap && state.bootstrap.mission_baseline) || null,
+
+		/**
+		 * Minutes to add to UTC to get the robot's local wall clock.
+		 *
+		 * Day bucketing and the night-shift badge must use local time: a 17:00
+		 * clean in a negative-UTC-offset install lands on the *next* UTC day.
+		 */
+		localOffsetMin: (state) => {
+			const next = (state.state && state.state.next_scheduled) || {}
+			const off = Number(next.server_offset_min)
+			return Number.isFinite(off) ? off : 0
+		},
 		nextScheduled: (state) => (state.state && state.state.next_scheduled) || null,
 		bridgeInfo: (state) => (state.state && state.state.bridge) || {},
 		// The page controller only lets group members and admins render the app at
@@ -436,7 +459,13 @@ export const useRobotStore = defineStore('robot', {
 		 */
 		async savePreferences(preferences) {
 			try {
-				this.preferences = await api.setPreferences(preferences, this.robotId)
+				const { preferences: saved, confirmed } = await api.setPreferences(preferences, this.robotId)
+				this.preferences = saved
+				// The robot echoes a preference change back within a second or two.
+				// Until it does we say so rather than implying it is settled — the old
+				// code applied the bridge's pre-change cache as though it were
+				// confirmed, which read to the operator as "my change was ignored".
+				this.preferencesConfirmed = confirmed
 				this.error = null
 			} catch (err) {
 				this.error = errorMessage(err, 'Could not save preferences')

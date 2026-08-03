@@ -314,7 +314,10 @@ describe('robot store', () => {
 		api.getSchedule.mockResolvedValue(week)
 		api.setSchedule.mockResolvedValue(week)
 		api.getPreferences.mockResolvedValue({ carpet_boost: 'auto', edge_clean: true })
-		api.setPreferences.mockResolvedValue({ carpet_boost: 'eco', edge_clean: true })
+		api.setPreferences.mockResolvedValue({
+			preferences: { carpet_boost: 'eco', edge_clean: true },
+			confirmed: true,
+		})
 
 		const store = useRobotStore()
 		await store.init({}, { live: false })
@@ -327,6 +330,42 @@ describe('robot store', () => {
 		expect(store.preferences.carpet_boost).toBe('auto')
 		await store.savePreferences({ carpet_boost: 'eco' })
 		expect(store.preferences.carpet_boost).toBe('eco')
+		expect(store.preferencesConfirmed).toBe(true)
+	})
+
+	// The bug operators hit twice: the write reached the robot every time, but the
+	// bridge answered with dorita980's pre-change cache, so the app applied the OLD
+	// value as though the robot had confirmed it and the setting appeared to revert.
+	// The response now carries `confirmed`, and an unconfirmed save must say so
+	// rather than claiming success.
+	it('reports an unconfirmed preference write instead of implying it settled', async () => {
+		api.getPreferences.mockResolvedValue({ cleaning_passes: 'auto' })
+		api.setPreferences.mockResolvedValue({
+			// What a stale read looks like: the pre-change value came back.
+			preferences: { cleaning_passes: 'auto' },
+			confirmed: false,
+		})
+
+		const store = useRobotStore()
+		await store.init({}, { live: false })
+		await store.savePreferences({ cleaning_passes: 'one' })
+
+		expect(store.preferencesConfirmed).toBe(false)
+		expect(store.error).toBeNull() // not an error — just not yet acknowledged
+	})
+
+	it('marks a confirmed preference write as settled', async () => {
+		api.setPreferences.mockResolvedValue({
+			preferences: { cleaning_passes: 'one' },
+			confirmed: true,
+		})
+
+		const store = useRobotStore()
+		await store.init({}, { live: false })
+		await store.savePreferences({ cleaning_passes: 'one' })
+
+		expect(store.preferencesConfirmed).toBe(true)
+		expect(store.preferences.cleaning_passes).toBe('one')
 	})
 
 	it('loads mission history and detail', async () => {

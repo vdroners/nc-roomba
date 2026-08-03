@@ -19,7 +19,12 @@
 				:robot-name="robotName" />
 		</section>
 
-		<Achievements :bbrun="store.bbrun" :bbmssn="store.bbmssn" :missions="missions" />
+		<Achievements
+			:bbrun="store.bbrun"
+			:bbmssn="store.bbmssn"
+			:missions="missions"
+			:baseline="store.missionBaseline"
+			:local-offset-min="store.localOffsetMin" />
 
 		<div class="nc-roomba-actions">
 			<NcButton type="secondary" :href="exportUrl('csv')" download data-testid="export-csv">

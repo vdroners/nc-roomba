@@ -90,6 +90,8 @@ export default {
 			return achievementSummary(evaluateAchievements({
 				bbrun: this.store.bbrun,
 				bbmssn: this.store.bbmssn,
+				baseline: this.store.missionBaseline,
+				localOffsetMin: this.store.localOffsetMin,
 				missions: this.store.missions,
 			}))
 		},

@@ -1,6 +1,6 @@
 {
   "name": "nc_roomba",
-  "version": "0.10.2",
+  "version": "0.11.0",
   "private": true,
   "description": "NC Roomba — Nextcloud control for Roomba over local MQTT",
   "license": "AGPL-3.0-or-later",

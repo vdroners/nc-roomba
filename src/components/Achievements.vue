@@ -55,6 +55,16 @@ export default {
 			type: Array,
 			default: () => [],
 		},
+		/** Odometer snapshot taken at install; null on an install without one. */
+		baseline: {
+			type: Object,
+			default: null,
+		},
+		/** Minutes to add to UTC for the robot's local wall clock. */
+		localOffsetMin: {
+			type: Number,
+			default: 0,
+		},
 	},
 
 	data() {
@@ -66,6 +76,8 @@ export default {
 			return evaluateAchievements({
 				bbrun: this.bbrun,
 				bbmssn: this.bbmssn,
+				baseline: this.baseline,
+				localOffsetMin: this.localOffsetMin,
 				missions: this.missions,
 			})
 		},

@@ -5,6 +5,83 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] - 2026-08-03
+
+Nextcloud was upgraded to 34.0.2 on PHP 8.5 partway through this work; the
+compatibility items below came out of that and are the reason for the version
+bump landing when it did.
+
+### Fixed
+
+- **A stale dependency cap put the entire instance into maintenance mode.**
+  `info.xml` declared `<php max-version="8.4">`; the Nextcloud image moved to PHP
+  8.5 on 2026-07-30. `occ upgrade` re-validates an app's dependencies on every
+  version bump, so the next bump failed its own check and left **every app and
+  every user** in maintenance mode over a constraint about a runtime we do not
+  control. The PHP upper bound is gone in both this app and nc-litter (which
+  carried the identical landmine, unfired), matching nc_gcs, which never had one.
+  A new preflight gate fails on any PHP cap and warns when the Nextcloud cap only
+  equals the running major — as it does now at 34, meaning the next Nextcloud
+  major would silently disable the app.
+- **NC 34 / PHP 8.5 deprecations in our own code**, firing on essentially every
+  request: `Notifier::prepare()` threw `\InvalidArgumentException`, which NC 34
+  deprecates in favour of `UnknownNotificationException` (252 occurrences across
+  the two apps), and `curl_close()` has been a no-op since PHP 8.0 and is
+  deprecated in 8.5. Both fixed in both apps. The PHP suite now also runs against
+  8.5, not only the 8.2 image, since that is what actually serves requests.
+- **Cleaning preferences appeared not to save.** Reported and "fixed" twice
+  before (0.7.2, 0.7.3); both were in the UI, which is why it kept coming back.
+  The write was never the problem — verified against the real robot, one-pass
+  lands and sticks within two seconds. **The response was lying.**
+  `dorita980.getPreferences()` does not fetch anything: it resolves as soon as
+  five always-present keys exist in its own accumulated cache and returns that
+  cache. A write publishes a delta but does not update it — only the robot's next
+  state publish does. So the read straight after a write returned the
+  *pre-change* values, `#refresh` merged them over the delta just applied, and
+  the app dutifully painted the old setting back as though the robot had
+  confirmed it.
+  Now: a just-written preference is shielded from a stale refresh for a bounded
+  window (narrow on purpose — a blanket "local wins" would also mask a genuine
+  rejection), the bridge waits for the robot to echo the change, and the response
+  carries `confirmed`, so Settings says "Alfred confirmed the new preferences"
+  versus "sent — not confirmed yet" instead of silently reverting.
+- **Achievement streaks were capped at 50 and could go backwards.** The metrics
+  are computed over whatever `/api/missions` returns and the client sent no
+  `limit`, so the endpoint default of 50 applied: `activeDays` could never exceed
+  50 and *decreased* as older rows fell off the page. Nothing is persisted, so an
+  unlocked streak badge genuinely disappeared.
+- **Active days were bucketed by UTC**, so a 17:00 clean in a negative-offset
+  install counted as the next day. Now bucketed by the robot's local wall clock,
+  which immediately corrected this install from 2 active days to 3.
+- **Sure-Footed showed a full progress bar while locked**, reading "925 / 50" at
+  100%. Its `gate` replaces the `metric >= goal` test entirely, so `metric`/`goal`
+  only feed the bar — and they pointed at run hours, describing a condition the
+  badge does not use. The bar now tracks the stuck-rate it actually gates on.
+- **"First Sweep" claimed something it cannot know** — "Completed the very first
+  cleaning mission", while reading the *lifetime* odometer. Alfred arrived with
+  ~1,800 missions behind him and this app never witnessed a first. Reworded.
+
+### Added
+
+- **Four achievements that are actually earned** (26 → 30). Every existing badge
+  scores off the robot's lifetime odometer, so 16 of the 26 unlocked the day the
+  app was installed. These score from the install baseline recorded in 0.10.0, or
+  from missions this app genuinely observed, so the wall moves:
+  - **The Long Game** ⌛ — a single mission of twenty-five minutes or more, using
+    per-mission duration, which exists only because 0.10.0 began recording it.
+  - **Under New Management** 🗝️ — ten missions since Nextcloud began keeping the
+    books; the robot's counter minus its value at install.
+  - **No Complaints** 🎩 — ten recorded missions in a row without a fault. A
+    *streak*, unlike `perfectionist`, whose metric is floored by a counter this
+    robot has not moved in 1,800 missions.
+  - **Night Porter** 🌙 — a mission started between ten at night and six in the
+    morning, in local time. Earned by choice rather than by grinding, which none
+    of the other twenty-nine are.
+- `mission_baseline_json` is finally read by something. The 0.10.0 repair step
+  recorded it so achievements could "score from a known point"; nothing ever
+  consumed it. It is now in the page bootstrap and feeds the metrics, falling
+  back to recorded rows on installs that have no baseline.
+
 ## [0.10.2] - 2026-08-02
 
 Reported as "battery percent and other data missing on the Dashboard". The

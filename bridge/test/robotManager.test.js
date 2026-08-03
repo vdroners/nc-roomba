@@ -223,3 +223,54 @@ test('mock ticker advances mission counters while cleaning', async () => {
 	assert.ok(state.mission.sqft > 0, 'covered area should advance')
 	manager.disconnect()
 })
+
+test('a fresh preference write is not clobbered by a stale upstream refresh', async () => {
+	// The defect operators hit twice. dorita980's getPreferences() does not fetch
+	// anything: it resolves as soon as five always-present keys exist in its own
+	// accumulated robotState and returns that whole cache. A write publishes a
+	// delta but does NOT update that cache — only the robot's next state publish
+	// does. So the read immediately after a write returned the pre-change values,
+	// #refresh merged them over the delta we had just applied, and the app
+	// faithfully painted the old setting back.
+	//
+	// Verified against the real robot: the write always landed (noAutoPasses went
+	// true within two seconds and stayed), but the response reported `auto`.
+	const manager = mockManager()
+	manager.mock = false
+	manager.connected = true
+
+	let echo = false // flips once the "robot" acknowledges
+	manager.robot = {
+		setPreferences: async () => true,
+		// The stale cache: keeps reporting the OLD value until `echo` flips.
+		getPreferences: async () => ({
+			cleanMissionStatus: { cycle: 'none', phase: 'charge' },
+			noAutoPasses: echo,
+			twoPass: false,
+		}),
+		getRobotState: async () => ({ noAutoPasses: echo, twoPass: false }),
+	}
+	manager.raw = { cleanMissionStatus: { cycle: 'none', phase: 'charge' }, noAutoPasses: false, twoPass: false }
+
+	// Write one-pass while the upstream cache still says auto.
+	const result = await manager.setPreferences({ cleaning_passes: 'one' })
+
+	// The robot never acknowledged, so say so — but do NOT report the old value.
+	assert.equal(result.confirmed, false, 'an unacknowledged write must not claim confirmation')
+	assert.equal(
+		result.cleaning_passes,
+		'one',
+		'the just-written value must survive the stale refresh (this is the bug)',
+	)
+
+	// A later read, still stale, must also not revert it inside the grace window.
+	assert.equal((await manager.getPreferences()).cleaning_passes, 'one')
+
+	// Once the robot echoes, everything agrees and confirmation is genuine.
+	echo = true
+	const confirmedResult = await manager.setPreferences({ cleaning_passes: 'one' })
+	assert.equal(confirmedResult.confirmed, true)
+	assert.equal(confirmedResult.cleaning_passes, 'one')
+
+	manager.disconnect()
+})

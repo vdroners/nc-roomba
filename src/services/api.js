@@ -47,10 +47,15 @@ export async function postAction(action, robotId = DEFAULT_ROBOT_ID) {
 
 /**
  * @param {number} [robotId]
+ * @param {number} [limit] rows to fetch; the API caps this at 500
  * @returns {Promise<object[]>} mission history rows, newest first
  */
-export async function getMissions(robotId = DEFAULT_ROBOT_ID) {
-	const { data } = await axios.get(`${base()}/api/missions`, { params: { robot_id: robotId } })
+export async function getMissions(robotId = DEFAULT_ROBOT_ID, limit = 500) {
+	// An explicit limit matters. The endpoint defaults to 50, and the achievement
+	// metrics are computed over whatever this returns — so `activeDays` was capped
+	// at 50 and could *decrease* as older rows fell off the page, un-unlocking a
+	// streak badge (nothing is persisted, so a badge really does disappear).
+	const { data } = await axios.get(`${base()}/api/missions`, { params: { robot_id: robotId, limit } })
 	return data.items || data.missions || []
 }
 
@@ -117,7 +122,13 @@ export async function getAlfredAlerts() {
  */
 export async function setPreferences(preferences, robotId = DEFAULT_ROBOT_ID) {
 	const { data } = await axios.put(`${base()}/api/robots/${robotId}/preferences`, { preferences })
-	return data.preferences || data
+	// `confirmed` reports whether the robot echoed the change back, as opposed to
+	// merely having been sent it. Dropping it is what let the UI treat a
+	// pre-change value as the robot's confirmed state.
+	return {
+		preferences: data.preferences || {},
+		confirmed: data.confirmed === true,
+	}
 }
 
 /**

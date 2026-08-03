@@ -189,7 +189,18 @@ export default {
 			this.savingPrefs = true
 			try {
 				await this.store.savePreferences({ ...this.prefs })
-				this.report(this.store.error || `Preferences written to ${this.robotName}.`, this.store.error ? 'error' : 'success')
+				if (this.store.error) {
+					this.report(this.store.error, 'error')
+				} else if (this.store.preferencesConfirmed) {
+					this.report(`${this.robotName} confirmed the new preferences.`, 'success')
+				} else {
+					// Sent, but the robot has not echoed it yet. Saying "written" here
+					// and showing the old value is what made this look broken.
+					this.report(
+						`Sent to ${this.robotName}. It has not confirmed yet — give it a moment, then Reload from robot.`,
+						'warning',
+					)
+				}
 			} finally {
 				this.savingPrefs = false
 			}

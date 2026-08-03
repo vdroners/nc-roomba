@@ -169,7 +169,13 @@ app.get('/preferences', wrap(async (req, res) => {
 }))
 
 app.post('/preferences', wrap(async (req, res) => {
-	res.json({ ok: true, preferences: await manager.setPreferences(req.body || {}) })
+	// `confirmed` says whether the ROBOT echoed the change back, not merely that we
+	// published it. The write itself has always landed; what was broken was the
+	// response, which reported dorita980's pre-change cache and so told the app the
+	// old value was the robot's confirmed state.
+	const result = await manager.setPreferences(req.body || {})
+	const { confirmed, ...preferences } = result
+	res.json({ ok: true, confirmed: confirmed !== false, preferences })
 }))
 
 app.get('/schedule', wrap(async (req, res) => {

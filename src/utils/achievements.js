@@ -30,7 +30,10 @@ const CATALOGUE = [
 	// ── Missions ────────────────────────────────────────────────────────────
 	{
 		id: 'first-sweep', title: 'First Sweep', icon: '🧹', tier: 'bronze',
-		blurb: 'Completed the very first cleaning mission.',
+		// Was "Completed the very first cleaning mission." — untrue on any robot
+		// that had already been in service, since this reads the LIFETIME odometer.
+		// Alfred arrived with ~1,800 missions behind him; the app never saw a first.
+		blurb: 'The mission counter is on the board.',
 		metric: (m) => m.missionsTotal, goal: 1,
 	},
 	{
@@ -77,8 +80,14 @@ const CATALOGUE = [
 	{
 		id: 'sure-footed', title: 'Sure-Footed', icon: '🦶', tier: 'silver',
 		blurb: 'Kept the stuck-rate under one per hour over 50+ hours.',
-		metric: (m) => m.runHours, goal: 50,
-		gate: (m) => m.runHours >= 50 && m.stuckPerHour < 1,
+		// `gate` REPLACES the metric>=goal test, so metric/goal only drive the
+		// progress bar. Pointing it at runHours made the bar read a full "925 / 50"
+		// beside a locked badge — describing a condition the badge does not use.
+		// Score the bar on the thing actually being asked for instead: how close
+		// the stuck-rate is to the one-per-hour ceiling, as a percentage.
+		metric: (m) => (m.stuckPerHour > 0 ? Math.min(100, Math.round(100 / m.stuckPerHour)) : (m.runHours > 0 ? 100 : 0)),
+		goal: 100,
+		gate: (m) => m.runHours >= 50 && m.stuckPerHour > 0 && m.stuckPerHour < 1,
 	},
 	{
 		id: 'edge-of-glory', title: 'Edge of Glory', icon: '🪜', tier: 'bronze',
@@ -175,6 +184,32 @@ const CATALOGUE = [
 		blurb: 'Cleaned on fourteen different days.',
 		metric: (m) => m.activeDays, goal: 14,
 	},
+
+	// ── Earned under this app's watch ─────────────────────────────────────────
+	// Everything above scores off the robot's lifetime odometer, so on a unit that
+	// arrived with ~1,800 missions behind it most of the wall unlocked on the day
+	// the app was installed. These four are measured from the install baseline or
+	// from missions this app actually recorded, so they move.
+	{
+		id: 'long-game', title: 'The Long Game', icon: '⌛', tier: 'bronze',
+		blurb: 'A single mission lasting twenty-five minutes or more.',
+		metric: (m) => m.longestMissionMin, goal: 25,
+	},
+	{
+		id: 'new-management', title: 'Under New Management', icon: '🗝️', tier: 'silver',
+		blurb: 'Ten missions completed since Nextcloud began keeping the books.',
+		metric: (m) => m.missionsSinceInstall, goal: 10,
+	},
+	{
+		id: 'no-complaints', title: 'No Complaints', icon: '🎩', tier: 'silver',
+		blurb: 'Ten recorded missions in a row without a single fault.',
+		metric: (m) => m.cleanStreak, goal: 10,
+	},
+	{
+		id: 'night-porter', title: 'Night Porter', icon: '🌙', tier: 'gold',
+		blurb: 'Attended to the floors between ten at night and six in the morning.',
+		metric: (m) => m.nightMissions, goal: 1,
+	},
 ]
 
 /**
@@ -194,9 +229,17 @@ function num(n) {
  * @param {object} [input.bbrun] lifetime run counters
  * @param {object} [input.bbmssn] lifetime mission counters
  * @param {Array<object>} [input.missions] locally-recorded mission rows
+ * @param {object|null} [input.baseline] odometer snapshot taken at install
+ * @param {number} [input.localOffsetMin] minutes to add to UTC for local time
  * @returns {object} metric bag
  */
-export function achievementMetrics({ bbrun = {}, bbmssn = {}, missions = [] } = {}) {
+export function achievementMetrics({
+	bbrun = {},
+	bbmssn = {},
+	missions = [],
+	baseline = null,
+	localOffsetMin = 0,
+} = {}) {
 	const runHours = num(bbrun.hr) + num(bbrun.min) / 60
 	const missionsTotal = num(bbmssn.nMssn) || missions.length
 	const stuckPerHour = runHours > 0 ? num(bbrun.nStuck) / runHours : 0
@@ -206,25 +249,58 @@ export function achievementMetrics({ bbrun = {}, bbmssn = {}, missions = [] } = 
 	let hasComeback = false
 	const days = new Set()
 	let prevWasError = null
+	// Longest run of consecutive fault-free missions, and the running count.
+	let cleanStreak = 0
+	let currentStreak = 0
+	let longestMissionMin = 0
+	let nightMissions = 0
 	// Missions arrive newest-first; walk oldest-first for the comeback check.
 	const chrono = [...missions].reverse()
 	for (const m of chrono) {
 		const errored = Number(m.error_code || m.error || 0) !== 0
 		if (!errored) {
 			errorFreeMissions += 1
+			currentStreak += 1
+			cleanStreak = Math.max(cleanStreak, currentStreak)
 			if (prevWasError === true) {
 				hasComeback = true
 			}
+		} else {
+			currentStreak = 0
 		}
 		prevWasError = errored
+
+		// Duration only exists because 0.10.0 started recording it. Null on runs
+		// too short to round to a minute, so treat absence as zero, not as a gap.
+		longestMissionMin = Math.max(longestMissionMin, num(m.msn_m ?? m.mssn_m))
+
 		const ts = Number(m.started_at)
 		if (Number.isFinite(ts) && ts > 0) {
-			days.add(new Date(ts * 1000).toISOString().slice(0, 10))
+			// LOCAL wall clock, not UTC. `toISOString()` buckets a 17:00 clean in a
+			// negative-offset install into the *next* day, and the night shift below
+			// would be plain wrong on UTC.
+			const local = new Date((ts + num(localOffsetMin) * 60) * 1000)
+			days.add(local.toISOString().slice(0, 10))
+			const hour = local.getUTCHours() // already shifted, so UTC getters read local
+			if (hour >= 22 || hour < 6) {
+				nightMissions += 1
+			}
 		}
 	}
 	// bbmssn.nMssnOk is the robot's own lifetime "ok" count — a better floor for
 	// error-free missions than only what NC has recorded locally.
 	errorFreeMissions = Math.max(errorFreeMissions, num(bbmssn.nMssnOk))
+
+	// Missions completed since this app was installed.
+	//
+	// Prefer the robot's own counter minus its value at install — that counts runs
+	// the app may have missed. Fall back to the number of rows we recorded when
+	// there is no baseline (a fresh install), and never report a negative if the
+	// robot's counter is ever reset below the baseline.
+	const baselineMssn = num(baseline && baseline.bbmssn && baseline.bbmssn.nMssn)
+	const missionsSinceInstall = baselineMssn > 0
+		? Math.max(0, num(bbmssn.nMssn) - baselineMssn)
+		: missions.length
 
 	return {
 		runHours,
@@ -237,6 +313,10 @@ export function achievementMetrics({ bbrun = {}, bbmssn = {}, missions = [] } = 
 		errorFreeMissions,
 		hasComeback,
 		activeDays: days.size,
+		missionsSinceInstall,
+		cleanStreak,
+		longestMissionMin,
+		nightMissions,
 	}
 }
 

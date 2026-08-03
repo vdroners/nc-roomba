@@ -51,6 +51,10 @@ class PageController extends Controller
 			'robot' => $primary?->jsonSerialize(),
 			'allowed_actions' => RobotService::ALLOWED_ACTIONS,
 			'alfred' => $this->robots->getAlfredConfig(),
+			// The odometer at install time. Achievements score the newer badges
+			// from here, so they measure what this app witnessed rather than
+			// inheriting ~1,800 missions of history it had no part in.
+			'mission_baseline' => $this->robots->getMissionBaseline(),
 		];
 
 		return new TemplateResponse(Application::APP_ID, 'main', [
