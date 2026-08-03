@@ -184,6 +184,7 @@ shipped.
 
 - Operator notes: [`docs/OPERATOR.md`](docs/OPERATOR.md)
 - Architecture: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
+- Static analysis / l10n: [`docs/STATIC_ANALYSIS.md`](docs/STATIC_ANALYSIS.md) — `l10n/en.json` is scaffolded; full Vue `t()` wrapping is follow-up
 - Improvements tour: [`docs/REVIEW.md`](docs/REVIEW.md)
 - Contributing / gates: [`CONTRIBUTING.md`](CONTRIBUTING.md)
 - Plans: [`docs/plans/`](docs/plans/) — most recently
