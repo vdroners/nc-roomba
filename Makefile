@@ -210,7 +210,13 @@ appstore: build
 		"$(ROOT)" "$(STAGING)/"
 	# Keep .env.example if present (rsync --exclude .env.* would drop it).
 	@if [ -f "$(ROOT).env.example" ]; then cp "$(ROOT).env.example" "$(STAGING)/.env.example"; fi
-	cd "$(STAGING)" && composer install --no-dev --no-interaction --optimize-autoloader
+	@if command -v composer >/dev/null 2>&1; then \
+		cd "$(STAGING)" && composer install --no-dev --no-interaction --optimize-autoloader; \
+	else \
+		echo "composer not on PATH — running in the composer:2 container"; \
+		docker run --rm -v "$(STAGING):/app" -w /app composer:2 \
+			composer install --no-dev --no-interaction --optimize-autoloader; \
+	fi
 	rm -rf "$(STAGING)/node_modules"
 	tar -czf "$(TARBALL)" -C /tmp "$(APP_ID)-$(VERSION)"
 	@echo "Release tarball: $(TARBALL)"
