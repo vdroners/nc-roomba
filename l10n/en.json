@@ -1,0 +1,17 @@
+{
+	"translations": {
+		"NC Roomba": "NC Roomba",
+		"Dashboard": "Dashboard",
+		"Location": "Location",
+		"History": "History",
+		"Settings": "Settings",
+		"Start": "Start",
+		"Pause": "Pause",
+		"Dock": "Dock",
+		"Find": "Find",
+		"Connected": "Connected",
+		"Disconnected": "Disconnected",
+		"Save": "Save",
+		"Cancel": "Cancel"
+	}
+}

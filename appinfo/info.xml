@@ -1,32 +1,31 @@
 <?xml version="1.0"?>
 <info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
-	<id>nc_roomba</id>
-	<name>NC Roomba</name>
-	<summary>Control your Roomba over local MQTT from Nextcloud</summary>
-	<description><![CDATA[NC Roomba — start, pause, dock, and monitor a Roomba via a private LAN MQTT bridge.
+<id>nc_roomba</id>
+<name>NC Roomba</name>
+<summary>Control your Roomba over local MQTT from Nextcloud</summary>
+<description><![CDATA[NC Roomba — start, pause, dock, and monitor a Roomba via a private LAN MQTT bridge.
 
 Live mission stage, optional pose map, mission history, schedule editor, error decoder, and Nextcloud Notifications/Activity.
 
 **Privacy:** after onboarding, the robot is controlled only over local MQTT on your LAN. This app does not use the iRobot cloud, does not send telemetry off-site, and does not require an iRobot account for day-to-day operation. Optional OpenClaw / Talk assistant integration is off by default.
 
 Requires the companion `nc-roomba-bridge` container (see INSTALL.md).]]></description>
-	<version>0.12.1</version>
-	<licence>AGPL-3.0-or-later</licence>
-	<author mail="dan@19labs.com">19labs</author>
-	<namespace>NcRoomba</namespace>
-	<documentation>
+<version>0.12.1</version>
+<licence>AGPL-3.0-or-later</licence>
+<author mail="dan@19labs.com">19labs</author>
+<namespace>NcRoomba</namespace>
+<documentation>
 		<user>https://github.com/vdroners/nc-roomba/blob/main/docs/OPERATOR.md</user>
 		<admin>https://github.com/vdroners/nc-roomba/blob/main/INSTALL.md</admin>
 	</documentation>
-	<category>tools</category>
-	<website>https://github.com/vdroners/nc-roomba</website>
-	<bugs>https://github.com/vdroners/nc-roomba/issues</bugs>
-	<repository type="git">https://github.com/vdroners/nc-roomba.git</repository>
-	<screenshot>https://raw.githubusercontent.com/vdroners/nc-roomba/main/docs/screenshots/dashboard.png</screenshot>
-	<screenshot>https://raw.githubusercontent.com/vdroners/nc-roomba/main/docs/screenshots/history.png</screenshot>
-	<screenshot>https://raw.githubusercontent.com/vdroners/nc-roomba/main/docs/screenshots/settings.png</screenshot>
-	<dependencies>
+<category>tools</category>
+<website>https://github.com/vdroners/nc-roomba</website>
+<bugs>https://github.com/vdroners/nc-roomba/issues</bugs>
+<repository type="git">https://github.com/vdroners/nc-roomba.git</repository>
+<screenshot>https://raw.githubusercontent.com/vdroners/nc-roomba/main/docs/screenshots/overview.png</screenshot>
+<screenshot>https://raw.githubusercontent.com/vdroners/nc-roomba/main/docs/screenshots/history.png</screenshot>
+<dependencies>
 		<!-- No PHP upper bound, deliberately.
 		     A cap here is re-validated by `occ upgrade` on every app version bump.
 		     The Nextcloud image moved to PHP 8.5 on 2026-07-30 while this declared
@@ -41,23 +40,23 @@ Requires the companion `nc-roomba-bridge` container (see INSTALL.md).]]></descri
 		<lib>curl</lib>
 		<nextcloud min-version="28" max-version="34"/>
 	</dependencies>
-	<background-jobs>
+<background-jobs>
 		<job>OCA\NcRoomba\BackgroundJob\TelemetrySampleJob</job>
 		<job>OCA\NcRoomba\BackgroundJob\RetentionPruneJob</job>
 	</background-jobs>
-	<repair-steps>
+<repair-steps>
 		<post-migration>
 			<step>OCA\NcRoomba\Migration\PurgeEmptyTelemetryRepairStep</step>
 		</post-migration>
 	</repair-steps>
-	<commands>
+<commands>
 		<command>OCA\NcRoomba\Command\HomeWifi</command>
 	</commands>
-	<settings>
-		<admin-section>OCA\NcRoomba\Settings\AdminSection</admin-section>
+<settings>
 		<admin>OCA\NcRoomba\Settings\AdminSettings</admin>
+		<admin-section>OCA\NcRoomba\Settings\AdminSection</admin-section>
 	</settings>
-	<activity>
+<activity>
 		<settings>
 			<setting>OCA\NcRoomba\Activity\Setting</setting>
 		</settings>
@@ -65,7 +64,7 @@ Requires the companion `nc-roomba-bridge` container (see INSTALL.md).]]></descri
 			<provider>OCA\NcRoomba\Activity\Provider</provider>
 		</providers>
 	</activity>
-	<navigations>
+<navigations>
 		<navigation>
 			<name>NC Roomba</name>
 			<route>nc_roomba.page.index</route>
