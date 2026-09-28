@@ -128,14 +128,10 @@ helper-down:
 	sudo systemctl stop nc-roomba-wifi-helper
 
 run-phpunit:
-	@if [ -f "$(ROOT)vendor/bin/phpunit" ] && command -v php >/dev/null 2>&1; then \
-		cd "$(ROOT)" && vendor/bin/phpunit; \
-	elif [ -f "$(ROOT)vendor/bin/phpunit" ]; then \
-		docker run --rm -v "$(ROOT):/app" -w /app php:8.2-cli php vendor/bin/phpunit; \
-	else \
+	@if [ ! -f "$(ROOT)vendor/bin/phpunit" ]; then \
 		docker run --rm -v "$(ROOT):/app" -w /app composer:2 composer install --no-interaction; \
-		docker run --rm -v "$(ROOT):/app" -w /app php:8.2-cli php vendor/bin/phpunit; \
 	fi
+	docker run --rm -v "$(ROOT):/app" -w /app php:8.2-cli php vendor/bin/phpunit
 
 phpunit: run-phpunit
 

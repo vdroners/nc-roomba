@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.3] - 2026-09-28
+
+### Fixed
+
+- **Bin-full notification spam** — the "already notified" latch lived in PHP
+  `static` memory, which resets every cron process, so every recipient got a
+  new "bin full" notification every 5 minutes while the bin stayed full
+  (7,513 since 08-03). Bin-full and low-battery now fire once per episode, on
+  the confirmed rising edge judged from stored telemetry samples (two
+  consecutive readings), and re-arm when the condition clears.
+- **Low battery while charging** — no longer raised when the robot is docked
+  and charging (`phase = charge`).
+- **Duplicate mission-complete** — the telemetry sampler and the bridge
+  journal both notified for the same run; the first to report an end within
+  15 minutes of the last notified one now wins.
+- `make run-phpunit` always runs in `php:8.2-cli` (host `php` may be a stub).
+
 ## [0.12.2] - 2026-08-03
 
 ### Fixed

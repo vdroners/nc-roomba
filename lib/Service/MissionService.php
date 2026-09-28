@@ -12,6 +12,7 @@ use OCA\NcRoomba\Db\TelemetrySample;
 use OCA\NcRoomba\Db\TelemetrySampleMapper;
 use OCA\NcRoomba\Db\CommandAuditMapper;
 use OCA\NcRoomba\AppInfo\Application;
+use OCA\NcRoomba\Util\AlertEdges;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\IConfig;
 use Psr\Log\LoggerInterface;
@@ -36,6 +37,8 @@ class MissionService
 	private const CURSOR_PREFIX = 'mission_cursor_';
 	/** appconfig key prefix: last observed lifetime mission counter, per robot. */
 	private const ODOMETER_PREFIX = 'mission_odometer_';
+	/** appconfig key prefix: end time of the last mission we notified about, per robot. */
+	private const MISSION_NOTIFIED_PREFIX = 'mission_notified_end_';
 
 	public function __construct(
 		private MissionMapper $missions,
@@ -129,6 +132,9 @@ class MissionService
 			$this->appendPhase($open, $phase !== '' ? $phase : 'run', $cycle, 'telemetry');
 		}
 
+		// Read before inserting this tick's sample: [previous, the one before it].
+		$recent = $this->telemetry->findLatestForRobot($robotId, 2);
+
 		$sample = new TelemetrySample();
 		$sample->setRobotId($robotId);
 		$sample->setMissionId($open !== null ? (int) $open->getId() : null);
@@ -188,11 +194,13 @@ class MissionService
 
 				$robot = $this->robots->getRobot($robotId);
 				$name = $robot?->getName() ?? Application::DEFAULT_ROBOT_NAME;
-				if ($error !== 0) {
-					$decoded = $this->errors->decode($error, 0);
-					$this->notify->missionError($name, $decoded['title'], $error);
-				} else {
-					$this->notify->missionComplete($name, (int) $open->getId(), $open->getSqft());
+				if ($this->claimMissionNotification($robotId, $now)) {
+					if ($error !== 0) {
+						$decoded = $this->errors->decode($error, 0);
+						$this->notify->missionError($name, $decoded['title'], $error);
+					} else {
+						$this->notify->missionComplete($name, (int) $open->getId(), $open->getSqft());
+					}
 				}
 			} else {
 				$this->missions->update($open);
@@ -201,17 +209,41 @@ class MissionService
 
 		$robot = $this->robots->getRobot($robotId);
 		$name = $robot?->getName() ?? Application::DEFAULT_ROBOT_NAME;
-		static $binNotified = [];
-		static $battNotified = [];
-		$key = (string) $robotId;
-		if ($bin === 'full' && empty($binNotified[$key])) {
+		$prev = $recent[0] ?? null;
+		$before = $recent[1] ?? null;
+
+		if (AlertEdges::confirmedRise(
+			AlertEdges::binFull($bin),
+			$prev !== null && AlertEdges::binFull($prev->getBinStatus()),
+			$before !== null && AlertEdges::binFull($before->getBinStatus()),
+		)) {
 			$this->notify->binFull($name);
-			$binNotified[$key] = true;
 		}
-		if ($battery !== null && $battery <= 15 && empty($battNotified[$key])) {
-			$this->notify->lowBattery($name, $battery);
-			$battNotified[$key] = true;
+
+		$phaseOrNull = $phase !== '' ? $phase : null;
+		if (AlertEdges::confirmedRise(
+			AlertEdges::batteryLow($battery, $phaseOrNull),
+			$prev !== null && AlertEdges::batteryLow($prev->getBatteryPct(), $prev->getPhase()),
+			$before !== null && AlertEdges::batteryLow($before->getBatteryPct(), $before->getPhase()),
+		)) {
+			$this->notify->lowBattery($name, (int) $battery);
 		}
+	}
+
+	/**
+	 * The sampler and the bridge journal both record the same physical run, so
+	 * without this each would notify for it. The first recorder to report an end
+	 * within OVERLAP_TOLERANCE_S of the last notified one wins.
+	 */
+	private function claimMissionNotification(int $robotId, int $endedAt): bool
+	{
+		$key = self::MISSION_NOTIFIED_PREFIX . $robotId;
+		$last = (int) $this->config->getAppValue(Application::APP_ID, $key, '0');
+		if ($last > 0 && abs($endedAt - $last) <= self::OVERLAP_TOLERANCE_S) {
+			return false;
+		}
+		$this->config->setAppValue(Application::APP_ID, $key, (string) $endedAt);
+		return true;
 	}
 
 	/**
@@ -321,6 +353,9 @@ class MissionService
 			);
 		}
 
+		if (!$this->claimMissionNotification($robotId, $ended ?? $started)) {
+			return;
+		}
 		$robot = $this->robots->getRobot($robotId);
 		$name = $robot?->getName() ?? 'the robot';
 		if ($error !== 0) {

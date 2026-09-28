@@ -28,6 +28,19 @@ class TelemetrySampleMapper extends QBMapper
 		return $this->findEntities($qb);
 	}
 
+	/** @return TelemetrySample[] newest first */
+	public function findLatestForRobot(int $robotId, int $limit = 2): array
+	{
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->getTableName())
+			->where($qb->expr()->eq('robot_id', $qb->createNamedParameter($robotId, IQueryBuilder::PARAM_INT)))
+			->orderBy('ts', 'DESC')
+			->addOrderBy('id', 'DESC')
+			->setMaxResults(max(1, $limit));
+		return $this->findEntities($qb);
+	}
+
 	/**
 	 * Delete samples older than the cutoff, sparing any that belong to a mission
 	 * retention is keeping.
