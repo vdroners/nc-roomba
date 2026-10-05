@@ -1,6 +1,6 @@
 # NC Roomba
 
-![version](https://img.shields.io/badge/version-0.12.2-C4A574)
+![version](https://img.shields.io/badge/version-0.12.4-C4A574)
 ![license](https://img.shields.io/badge/license-AGPL--3.0--or--later-1a1a1c)
 
 Nextcloud app to control a Roomba over the **local LAN MQTT API** — no iRobot
@@ -152,7 +152,7 @@ image moved to PHP 8.5 while this declared `max-version="8.4"`. `make
 gate-preflight` now fails on any PHP cap.
 
 The Nextcloud cap *is* meaningful (a major release can break APIs), but note it
-currently reads `max-version="34"` and 34 is what runs — so the next Nextcloud
+currently reads `max-version="35"` and 35 is what runs — so the next Nextcloud
 major will disable the app until it is tested and the cap raised. Preflight warns
 about this.
 
