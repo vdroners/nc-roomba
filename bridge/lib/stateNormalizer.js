@@ -250,7 +250,7 @@ function isStale(dto, maxAgeMs = 30_000, now = Date.now()) {
  */
 function needsAttention(dto) {
 	const d = obj(dto)
-	return (num(d.error) ?? 0) !== 0 || (num(d.not_ready) ?? 0) !== 0
+	return (num(d.error) ?? 0) !== 0 || (num(d.not_ready) ?? 0) !== 0 || d.bin === BIN_FULL
 }
 
 module.exports = {

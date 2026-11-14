@@ -8,7 +8,11 @@
 			@open-drawer="$emit('open-drawer')" />
 
 		<!-- At-a-glance hero -->
-		<StatusHero class="nc-roomba-dashboard__hero" :state="store.state" :next-scheduled="store.nextScheduled" />
+		<StatusHero
+			class="nc-roomba-dashboard__hero"
+			:state="store.state"
+			:next-scheduled="store.nextScheduled"
+			:bin-emptied="store.binEmptied" />
 
 		<!-- Controls -->
 		<section class="nc-roomba-panel nc-roomba-dashboard__controls" style="margin: 0">

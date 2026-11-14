@@ -123,9 +123,9 @@
       "action": "Charge Alfred before starting a clean."
     },
     "2": {
-      "title": "Bin full",
-      "detail": "Cannot start while bin is full.",
-      "action": "Empty the dust bin."
+      "title": "Uneven ground",
+      "detail": "Robot is not sitting level, so it will not start.",
+      "action": "Move Roomba onto flat floor or back onto the dock, then retry."
     },
     "3": {
       "title": "Path blocked",
@@ -168,9 +168,9 @@
       "action": "No action needed — wait a moment and retry."
     },
     "16": {
-      "title": "Just docked / busy",
-      "detail": "Robot is on the dock and finishing up; not ready for a new command yet.",
-      "action": "Give it a few seconds, then retry."
+      "title": "Bin full: empty the bin",
+      "detail": "Roomba won't start a new clean while the dust bin is full (iRobot notReady 16). Waiting will not clear it.",
+      "action": "Empty the bin, wipe the two bin-full sensors inside it, push it back in until it clicks, then press Clean. This alert clears by itself once Roomba sees an empty bin."
     },
     "31": {
       "title": "Docked and charging",

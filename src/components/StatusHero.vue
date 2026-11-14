@@ -70,6 +70,7 @@ import {
 	rssiClass,
 	signalBars,
 } from '../utils/format.js'
+import { isBinFull } from '../utils/errorDecoder.js'
 
 /** SVG ring geometry: r=16 → circumference 2πr. */
 const RING_CIRC = 2 * Math.PI * 16
@@ -97,6 +98,11 @@ export default {
 		nextScheduled: {
 			type: Object,
 			default: null,
+		},
+		/** True for a while after a full bin cleared (store `binEmptied`). */
+		binEmptied: {
+			type: Boolean,
+			default: false,
 		},
 	},
 
@@ -176,6 +182,10 @@ export default {
 			if (error !== 0) {
 				return { label: 'Attention', detail: 'The robot reported an error — see the alert below.', tone: 'warn' }
 			}
+			// A full bin outranks docked/charging/busy: it never clears by waiting.
+			if (isBinFull(this.state)) {
+				return { label: 'Bin full', detail: 'Empty the bin, push it back in until it clicks, then press Clean.', tone: 'warn' }
+			}
 			if (CLEANING.has(phase) || cycle === 'clean' || cycle === 'spot') {
 				return { label: 'Cleaning', detail: 'On the job — live progress on the mission stage.', tone: 'run' }
 			}
@@ -184,6 +194,9 @@ export default {
 			}
 			if (phase === 'pause') {
 				return { label: 'Paused', detail: 'Mission paused — resume from the controls.', tone: 'warn' }
+			}
+			if (this.binEmptied && notReady === 0) {
+				return { label: 'Ready', detail: 'Bin emptied — ready to clean. Press Clean to start.', tone: 'ok' }
 			}
 			if (DOCKED.has(phase)) {
 				return { label: 'Charging', detail: 'Docked and topping up — ready when you are.', tone: 'dock' }

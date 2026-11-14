@@ -396,4 +396,28 @@ describe('robot store', () => {
 		store.clearMission()
 		expect(store.selectedMission).toBe(null)
 	})
+
+	it('confirms "bin emptied" after a full bin clears, until a clean starts', () => {
+		const store = useRobotStore()
+		store.applyState(stateDto({ bin: 'full', not_ready: 16 }))
+		expect(store.binFull).toBe(true)
+		expect(store.binEmptied).toBe(false)
+
+		store.applyState(stateDto({ bin: 'ok', not_ready: 0 }))
+		expect(store.binFull).toBe(false)
+		expect(store.binEmptied).toBe(true)
+		expect(store.decodedError.show).toBe(false)
+
+		store.applyState(stateDto({ bin: 'ok', not_ready: 0, phase: 'run', cycle: 'clean' }))
+		expect(store.binEmptied).toBe(false)
+	})
+
+	it('drops the "bin emptied" note if the bin reads full again', () => {
+		const store = useRobotStore()
+		store.applyState(stateDto({ bin: 'full', not_ready: 16 }))
+		store.applyState(stateDto({ bin: 'ok', not_ready: 0 }))
+		store.applyState(stateDto({ bin: 'full', not_ready: 16 }))
+		expect(store.binEmptied).toBe(false)
+		expect(store.binFull).toBe(true)
+	})
 })
