@@ -1,3 +1,5 @@
+import { isCleaningCycle } from './format.js'
+
 /**
  * Map robot state to a MissionStage animation mood.
  *
@@ -17,7 +19,7 @@ export function stageMood(state) {
 	if (p === 'pause' || p === 'stop') {
 		return 'pause'
 	}
-	if (p === 'run' || cycle === 'clean' || cycle === 'spot') {
+	if (p === 'run' || isCleaningCycle(cycle)) {
 		return 'run'
 	}
 	if (p.startsWith('hm')) {

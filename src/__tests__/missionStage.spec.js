@@ -6,6 +6,9 @@ describe('MissionStage mood', () => {
 	it('uses run while cleaning', () => {
 		expect(stageMood({ phase: 'run', cycle: 'clean', error: 0, not_ready: 0 })).toBe('run')
 		expect(stageMood({ phase: 'charge', cycle: 'spot', error: 0, not_ready: 0 })).toBe('run')
+		// The 960 reports `quick` for scheduled runs.
+		expect(stageMood({ phase: 'hmMidMsn', cycle: 'quick', error: 0, not_ready: 0 })).toBe('run')
+		expect(stageMood({ phase: 'charge', cycle: 'quick', error: 0, not_ready: 0 })).toBe('run')
 	})
 
 	it('uses pause / dock / idle / fault correctly', () => {

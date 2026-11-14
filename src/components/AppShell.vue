@@ -82,7 +82,7 @@
 </template>
 
 <script>
-import { isBridgeUnreachable } from '@/utils/format.js'
+import { isBridgeUnreachable, isCleaningCycle } from '@/utils/format.js'
 import { NcButton, NcNoteCard } from '@nextcloud/vue'
 
 import ConnectionHealthDrawer from './ConnectionHealthDrawer.vue'
@@ -192,7 +192,7 @@ export default {
 			}
 			const phase = String(this.state.phase || '')
 			const cycle = String(this.state.cycle || '')
-			return phase === 'run' || cycle === 'clean' || cycle === 'spot'
+			return phase === 'run' || isCleaningCycle(cycle)
 		},
 	},
 }

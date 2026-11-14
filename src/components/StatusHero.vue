@@ -68,6 +68,7 @@ import {
 	binClass,
 	binLabel,
 	rssiClass,
+	isCleaningCycle,
 	signalBars,
 } from '../utils/format.js'
 import { isBinFull } from '../utils/errorDecoder.js'
@@ -186,7 +187,7 @@ export default {
 			if (isBinFull(this.state)) {
 				return { label: 'Bin full', detail: 'Empty the bin, push it back in until it clicks, then press Clean.', tone: 'warn' }
 			}
-			if (CLEANING.has(phase) || cycle === 'clean' || cycle === 'spot') {
+			if (CLEANING.has(phase) || isCleaningCycle(cycle)) {
 				return { label: 'Cleaning', detail: 'On the job — live progress on the mission stage.', tone: 'run' }
 			}
 			if (RETURNING.has(phase)) {
