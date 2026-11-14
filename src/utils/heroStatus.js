@@ -1,5 +1,5 @@
 import { isBinFull } from './errorDecoder.js'
-import { isCleaningCycle } from './format.js'
+import { isBridgeUnreachable, isCleaningCycle } from './format.js'
 
 /** Phases that mean the robot is actively cleaning. */
 const CLEANING = new Set(['run'])
@@ -25,6 +25,16 @@ const HELD = new Set(['pause', 'stop'])
 export function heroStatus(state, opts = {}) {
 	if (!state) {
 		return { label: 'Connecting…', detail: 'Waiting for the first telemetry sample.', tone: 'idle' }
+	}
+	// Bridge down or robot MQTT session down: the fields below are the last
+	// reading, not the present. Saying "Idle and ready to clean" here is wrong.
+	const health = state.connection_health || {}
+	if (isBridgeUnreachable(state) || health.mqtt === 'down') {
+		return {
+			label: 'Offline',
+			detail: 'Can\'t reach the robot right now — the readings shown are the last ones received.',
+			tone: 'idle',
+		}
 	}
 	const phase = String(state.phase || '')
 	const cleaning = isCleaningCycle(state.cycle)

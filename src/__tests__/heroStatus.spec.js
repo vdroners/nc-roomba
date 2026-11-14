@@ -41,4 +41,13 @@ describe('status hero', () => {
 	it('confirms a just-emptied bin', () => {
 		expect(heroStatus(base, { binEmptied: true }).detail).toMatch(/Bin emptied/)
 	})
+
+	it('says Offline instead of "ready" when the bridge or robot link is down', () => {
+		const down = heroStatus({ ...base, phase: '', connection_health: { bridge_ok: false, mqtt: 'down' } })
+		expect(down.label).toBe('Offline')
+		expect(heroStatus({ ...base, connection_health: { bridge_ok: true, mqtt: 'down' } }).label).toBe('Offline')
+		expect(heroStatus({ ...base, connection_health: { bridge_ok: true, mqtt: 'up' } }).label).toBe('Charging')
+		// conflict has its own drawer; not "offline"
+		expect(heroStatus({ ...base, connection_health: { bridge_ok: true, mqtt: 'conflict' } }).label).toBe('Charging')
+	})
 })
