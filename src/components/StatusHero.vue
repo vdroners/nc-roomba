@@ -70,16 +70,10 @@ import {
 	rssiClass,
 	signalBars,
 } from '../utils/format.js'
+import { heroStatus } from '../utils/heroStatus.js'
 
 /** SVG ring geometry: r=16 → circumference 2πr. */
 const RING_CIRC = 2 * Math.PI * 16
-
-/** Phases that mean the robot is actively cleaning. */
-const CLEANING = new Set(['run'])
-/** Phases that mean the robot is heading home. */
-const RETURNING = new Set(['hmMidMsn', 'hmUsrDock', 'hmPostMsn'])
-/** Phases that mean the robot is on the dock. */
-const DOCKED = new Set(['charge', 'dockend', 'recharge'])
 
 /**
  * Zone-A "at a glance" hero: one integrated card answering "is the robot OK and
@@ -97,6 +91,11 @@ export default {
 		nextScheduled: {
 			type: Object,
 			default: null,
+		},
+		/** True for a while after a full bin cleared (store `binEmptied`). */
+		binEmptied: {
+			type: Boolean,
+			default: false,
 		},
 	},
 
@@ -165,33 +164,7 @@ export default {
 		 * @returns {{label:string,detail:string,tone:'ok'|'run'|'dock'|'warn'|'idle'}}
 		 */
 		status() {
-			if (!this.state) {
-				return { label: 'Connecting…', detail: 'Waiting for the first telemetry sample.', tone: 'idle' }
-			}
-			const phase = String(this.state.phase || '')
-			const cycle = String(this.state.cycle || '')
-			const error = Number(this.state.error || 0)
-			const notReady = Number(this.state.not_ready || 0)
-
-			if (error !== 0) {
-				return { label: 'Attention', detail: 'The robot reported an error — see the alert below.', tone: 'warn' }
-			}
-			if (CLEANING.has(phase) || cycle === 'clean' || cycle === 'spot') {
-				return { label: 'Cleaning', detail: 'On the job — live progress on the mission stage.', tone: 'run' }
-			}
-			if (RETURNING.has(phase)) {
-				return { label: 'Returning', detail: 'Heading back to the dock.', tone: 'run' }
-			}
-			if (phase === 'pause') {
-				return { label: 'Paused', detail: 'Mission paused — resume from the controls.', tone: 'warn' }
-			}
-			if (DOCKED.has(phase)) {
-				return { label: 'Charging', detail: 'Docked and topping up — ready when you are.', tone: 'dock' }
-			}
-			if (notReady !== 0) {
-				return { label: 'Not ready', detail: 'Off the dock or not ready to clean.', tone: 'warn' }
-			}
-			return { label: 'Ready', detail: 'Idle and ready to clean.', tone: 'ok' }
+			return heroStatus(this.state, { binEmptied: this.binEmptied })
 		},
 	},
 

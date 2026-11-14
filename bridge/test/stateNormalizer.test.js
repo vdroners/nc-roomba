@@ -178,6 +178,10 @@ test('needsAttention fires the decoder panel for error and notReady', () => {
 	assert.equal(needsAttention(normalizeState(binFull)), true)
 	const notReady = raw960({ cleanMissionStatus: { phase: 'charge', cycle: 'none', notReady: 16 } })
 	assert.equal(needsAttention(normalizeState(notReady)), true)
+	// Live 960, 2026-11-14: bin.full with notReady already 0 must still flag.
+	const fullOnly = raw960({ bin: { present: true, full: true }, cleanMissionStatus: { phase: 'charge', cycle: 'none', notReady: 0 } })
+	assert.equal(normalizeState(fullOnly).bin, 'full')
+	assert.equal(needsAttention(normalizeState(fullOnly)), true)
 	assert.equal(needsAttention(null), false)
 })
 

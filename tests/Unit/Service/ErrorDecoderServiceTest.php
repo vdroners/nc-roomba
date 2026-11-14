@@ -42,6 +42,53 @@ class ErrorDecoderServiceTest extends TestCase
 		$this->assertNotSame('', $d['title']);
 	}
 
+	public function testNotReady16IsBinFull(): void
+	{
+		$d = $this->svc->decode(0, 16);
+		$this->assertSame('bin_full', $d['kind']);
+		$this->assertSame(16, $d['code']);
+		$this->assertStringContainsString('bin full', strtolower($d['title']));
+		$this->assertStringNotContainsString('docked', strtolower($d['title']));
+		$this->assertStringContainsString('empty', strtolower($d['action']));
+	}
+
+	public function testBinFullFlagOutranksOtherNotReady(): void
+	{
+		// Live 960 sample 2026-11-14: phase=charge, notReady=16, bin.full=true.
+		$d = $this->svc->decode(0, 15, 'full');
+		$this->assertSame('bin_full', $d['kind']);
+		$this->assertSame(0, $d['code']);
+		$d = $this->svc->decode(0, 0, 'full');
+		$this->assertSame('bin_full', $d['kind']);
+	}
+
+	public function testRealErrorStillWinsOverBinFull(): void
+	{
+		$d = $this->svc->decode(5, 16, 'full');
+		$this->assertSame('error', $d['kind']);
+		$this->assertSame(5, $d['code']);
+	}
+
+	public function testEmptiedBinClearsBackToReady(): void
+	{
+		$d = $this->svc->decode(0, 0, 'ok');
+		$this->assertSame('none', $d['kind']);
+		$d = $this->svc->decode(0, 15, 'ok');
+		$this->assertSame('not_ready', $d['kind']);
+	}
+
+	public function testCopyUsesGenericRobotName(): void
+	{
+		// 0.12.1 made "Roomba" the default name; "Alfred" is the OpenClaw
+		// assistant, not the robot. No decoded copy may call the robot Alfred.
+		$raw = (string) file_get_contents(dirname(__DIR__, 3) . '/knowledge/error_codes.json');
+		$this->assertStringNotContainsString('Alfred', $raw);
+		foreach ([[9999, 0], [0, 77]] as [$e, $n]) {
+			$d = $this->svc->decode($e, $n);
+			$this->assertStringNotContainsString('Alfred', $d['title'] . $d['detail'] . $d['action']);
+		}
+	}
+
 	public function testUnknownFallsBack(): void
 	{
 		$d = $this->svc->decode(9999, 0);

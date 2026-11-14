@@ -9,6 +9,9 @@ namespace OCA\NcRoomba\Service;
  */
 class ErrorDecoderService
 {
+	/** iRobot 9xx `cleanMissionStatus.notReady` code for "bin full". */
+	public const NOT_READY_BIN_FULL = 16;
+
 	private ?array $catalog = null;
 
 	public function __construct(
@@ -18,9 +21,14 @@ class ErrorDecoderService
 	}
 
 	/**
+	 * A full bin (normalized `bin === 'full'` or notReady 16) outranks every
+	 * notReady code: it never clears by waiting, so a generic "busy, retry"
+	 * message sends the operator the wrong way. A real `error` still wins.
+	 *
+	 * @param string|null $bin normalized bin state from the bridge ('ok'|'full'|'missing'|'unknown')
 	 * @return array{code:int,kind:string,title:string,detail:string,action:string}
 	 */
-	public function decode(int $error, int $notReady = 0): array
+	public function decode(int $error, int $notReady = 0, ?string $bin = null): array
 	{
 		$catalog = $this->load();
 		if ($error !== 0) {
@@ -41,7 +49,17 @@ class ErrorDecoderService
 				'kind' => 'error',
 				'title' => 'Unknown error ' . $error,
 				'detail' => 'No catalog entry for this error code.',
-				'action' => 'Check Alfred status lights and retry; consult OPERATOR.md.',
+				'action' => 'Check Roomba status lights and retry; consult OPERATOR.md.',
+			];
+		}
+		if ($bin === 'full' || $notReady === self::NOT_READY_BIN_FULL) {
+			$entry = $catalog['not_ready'][(string) self::NOT_READY_BIN_FULL] ?? [];
+			return [
+				'code' => $notReady === self::NOT_READY_BIN_FULL ? $notReady : 0,
+				'kind' => 'bin_full',
+				'title' => (string) ($entry['title'] ?? 'Bin full: empty the bin'),
+				'detail' => (string) ($entry['detail'] ?? 'Roomba will not start a new clean while the dust bin is full.'),
+				'action' => (string) ($entry['action'] ?? 'Empty the bin, reseat it until it clicks, then press Clean.'),
 			];
 		}
 		if ($notReady !== 0) {
@@ -64,7 +82,7 @@ class ErrorDecoderService
 				'code' => $notReady,
 				'kind' => 'not_ready',
 				'title' => 'Not ready yet',
-				'detail' => 'Alfred is briefly busy (often charging or settling on the dock) and is not ready for that command right now. This usually clears on its own.',
+				'detail' => 'Roomba is briefly busy (often charging or settling on the dock) and is not ready for that command right now. This usually clears on its own.',
 				'action' => 'Wait a few seconds and try again.',
 			];
 		}

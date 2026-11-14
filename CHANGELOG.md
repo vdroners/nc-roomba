@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **A full bin showed as "Just docked / busy (code 16) — give it a few seconds,
+  then retry."** iRobot 9xx `notReady 16` means *bin full*; 0.9.1 had guessed it
+  was a post-dock transient. Live 960 on 2026-11-14: `phase=charge`,
+  `notReady=16`, `bin.full=true`. The catalog now decodes 16 as
+  "Bin full: empty the bin" with an empty-and-reseat next step, and a full bin
+  (`bin === 'full'` or `notReady 16`) outranks every other notReady code in
+  `ErrorDecoderService`, the client decoder (fallback for an older server) and the
+  status hero ("Bin full" instead of "Charging — ready when you are"). A real
+  `error` still wins. `notReady 2` no longer claims "Bin full" (now "Uneven ground").
+- Bridge `needs_attention` is now also true when the bin reads full.
+- Status hero: phase now wins over cycle, so a paused/stopped mission says
+  "Paused", heading home says "Returning", and a mid-mission recharge
+  (`cycle clean|quick`, `phase charge`) says "Recharging — heads back out on its
+  own" instead of "Cleaning". The 960's `quick` cycle (its scheduled runs) now
+  counts as a mission in the hero, app shell and mission stage.
+- Status hero says "Offline" when the bridge or the robot's MQTT link is down,
+  instead of "Idle and ready to clean".
+- Error/hint copy calls the robot "Roomba", not "Alfred" (the OpenClaw assistant).
+- Bridge and wifi-helper versions synced to 0.12.4 (preflight G01 was failing).
+
+### Added
+- After a full bin clears, the hero says "Bin emptied — ready to clean. Press
+  Clean to start." until a clean starts, the bin fills again, or 15 minutes pass.
+
 ## [0.12.4] - 2026-10-05
 
 ### Changed

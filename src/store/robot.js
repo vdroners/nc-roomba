@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 
 import * as api from '../services/api.js'
 import { ageSeconds } from '../utils/format.js'
-import { decoratedError, hasFault, isConflict, isStale } from '../utils/errorDecoder.js'
+import { decoratedError, hasFault, isBinFull, isConflict, isStale } from '../utils/errorDecoder.js'
 
 /** Poll cadence when SSE is unavailable (notify_push not required). */
 const POLL_MS = 3000
@@ -25,6 +25,8 @@ const SSE_BACKUP_POLL_MS = 6000
 const SSE_MAX_FAILURES = 5
 /** Client-side live timeline cap — history detail reads the persisted events. */
 const MAX_LIVE_EVENTS = 60
+/** How long the "bin emptied, ready to clean" confirmation stays up. */
+const BIN_EMPTIED_MS = 15 * 60 * 1000
 
 /**
  * Optimistic phase hint per action. The robot takes a second or two to report
@@ -94,6 +96,14 @@ export const useRobotStore = defineStore('robot', {
 		lastSeenAgeS: 0,
 		loading: false,
 		sseFailures: 0,
+		/**
+		 * Epoch ms when a full bin was seen to clear (operator emptied it).
+		 * Drives the "Bin emptied, ready to clean" confirmation; cleared when a
+		 * mission starts, the bin fills again, or after BIN_EMPTIED_MS.
+		 *
+		 * @type {number|null}
+		 */
+		binEmptiedAt: null,
 	}),
 
 	getters: {
@@ -113,6 +123,10 @@ export const useRobotStore = defineStore('robot', {
 		hasSample: (state) => Boolean(state.state && state.state.updated_at),
 		fault: (state) => hasFault(state.state),
 		decodedError: (state) => decoratedError(state.state),
+		binFull: (state) => isBinFull(state.state),
+		binEmptied: (state) => state.binEmptiedAt !== null
+			&& !isBinFull(state.state)
+			&& Date.now() - state.binEmptiedAt < BIN_EMPTIED_MS,
 		hints: (state) => (state.state && state.state.maintenance_hints) || [],
 		bbrun: (state) => (state.state && state.state.bbrun) || {},
 		bbmssn: (state) => (state.state && state.state.bbmssn) || {},
@@ -336,6 +350,11 @@ export const useRobotStore = defineStore('robot', {
 			// a frame that omits them means "unchanged", not "cleared".
 			const next = { ...(previous || {}), ...dto }
 			this.state = next
+			if (isBinFull(next) || next.bin === 'missing' || next.phase === 'run') {
+				this.binEmptiedAt = null
+			} else if (previous && isBinFull(previous)) {
+				this.binEmptiedAt = Date.now()
+			}
 			this.lastSeenAgeS = ageSeconds(next.updated_at)
 			const changed = !previous || previous.phase !== next.phase || previous.cycle !== next.cycle
 			if (changed && next.phase) {

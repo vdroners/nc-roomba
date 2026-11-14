@@ -13,6 +13,7 @@ import {
 	rssiClass,
 	rssiLabel,
 	isBridgeUnreachable,
+	isCleaningCycle,
 	signalBars,
 	timestampLabel,
 } from '@/utils/format.js'
@@ -138,5 +139,19 @@ describe('bridge reachability', () => {
 		expect(isBridgeUnreachable(null)).toBe(false)
 		expect(isBridgeUnreachable({})).toBe(false)
 		expect(isBridgeUnreachable({ connection_health: {} })).toBe(false)
+	})
+})
+
+describe('cleaning cycles', () => {
+	it('treats clean, quick (960 scheduled runs) and spot as missions', () => {
+		expect(isCleaningCycle('clean')).toBe(true)
+		expect(isCleaningCycle('quick')).toBe(true)
+		expect(isCleaningCycle('spot')).toBe(true)
+	})
+
+	it('does not treat errands or idle as missions', () => {
+		for (const c of ['none', 'dock', 'evac', 'train', '', null, undefined]) {
+			expect(isCleaningCycle(c)).toBe(false)
+		}
 	})
 })

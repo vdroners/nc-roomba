@@ -32,6 +32,22 @@ const CYCLE_LABELS = {
 }
 
 /**
+ * Cycles that mean "on a cleaning mission" -- same list as the bridge
+ * (robotManager CLEANING_CYCLES) and MissionService. The 960 reports `quick`
+ * for its scheduled runs (bridge mission journal, Nov 2026), so a UI check for
+ * only clean/spot misses most real missions whenever the phase is not `run`.
+ */
+export const CLEANING_CYCLES = Object.freeze(['clean', 'quick', 'spot'])
+
+/**
+ * @param {string|null|undefined} cycle raw `cycle`
+ * @returns {boolean} true when the robot is on a cleaning mission
+ */
+export function isCleaningCycle(cycle) {
+	return CLEANING_CYCLES.includes(String(cycle || ''))
+}
+
+/**
  * A robot that was just power-cycled (or had its battery pulled) reports
  * `batPct: 0` while docked until the BMS recalibrates over the first charge
  * cycle. Rendering that as a red "0%" wrongly reads as a critical battery, so

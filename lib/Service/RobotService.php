@@ -329,7 +329,8 @@ class RobotService
 
 		$error = (int) ($state['error'] ?? 0);
 		$notReady = (int) ($state['not_ready'] ?? $state['notReady'] ?? 0);
-		$state['decoded_error'] = $this->errors->decode($error, $notReady);
+		$bin = isset($state['bin']) && is_string($state['bin']) ? $state['bin'] : null;
+		$state['decoded_error'] = $this->errors->decode($error, $notReady, $bin);
 
 		$conflict = $state['conflict'] ?? ($health['body']['conflict'] ?? null);
 		$mqtt = 'down';
