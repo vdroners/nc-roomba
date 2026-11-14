@@ -87,6 +87,14 @@ errors:
     title: "Battery overheating"
     detail: "Battery temperature too high."
     action: "Let Alfred cool on a hard floor; do not charge until cool."
+# TODO(notReady mapping, Alfred 2026-11-14): community 9xx drivers
+# (steve-gregory/irobot-manager, SmartThings "Roomba 980 reverse engineering",
+# jeremywillans/ha-rest980-roomba) give 1 = stuck, 7 = not upright / tilted,
+# 8 = too dark, 15 = low battery, 39 = pending (saving map), 48 = path blocked.
+# This catalog disagrees on 1, 7 and 15. Per Alfred, leave them until the robot
+# actually reports one, then confirm against the live bin/battery/pose fields
+# and update both this file and error_codes.json. 16 (bin full) was confirmed
+# live on 2026-11-14.
 not_ready:
   "0":
     title: "Ready"
