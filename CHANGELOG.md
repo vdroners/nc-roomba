@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   status hero ("Bin full" instead of "Charging — ready when you are"). A real
   `error` still wins. `notReady 2` no longer claims "Bin full" (now "Uneven ground").
 - Bridge `needs_attention` is now also true when the bin reads full.
+- Status hero: phase now wins over cycle, so a paused/stopped mission says
+  "Paused", heading home says "Returning", and a mid-mission recharge
+  (`cycle clean|quick`, `phase charge`) says "Recharging — heads back out on its
+  own" instead of "Cleaning". The 960's `quick` cycle (its scheduled runs) now
+  counts as a mission in the hero, app shell and mission stage.
+- Status hero says "Offline" when the bridge or the robot's MQTT link is down,
+  instead of "Idle and ready to clean".
+- Error/hint copy calls the robot "Roomba", not "Alfred" (the OpenClaw assistant).
+- Bridge and wifi-helper versions synced to 0.12.4 (preflight G01 was failing).
 
 ### Added
 - After a full bin clears, the hero says "Bin emptied — ready to clean. Press
