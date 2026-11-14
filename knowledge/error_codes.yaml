@@ -6,11 +6,11 @@ errors:
   "1":
     title: "Left wheel dropped"
     detail: "Left wheel is not contacting the floor."
-    action: "Place Alfred on a hard floor and clear debris under the wheel."
+    action: "Place Roomba on a hard floor and clear debris under the wheel."
   "2":
     title: "Right wheel dropped"
     detail: "Right wheel is not contacting the floor."
-    action: "Place Alfred on a hard floor and clear debris under the wheel."
+    action: "Place Roomba on a hard floor and clear debris under the wheel."
   "5":
     title: "Left wheel jammed"
     detail: "Left wheel cannot turn freely."
@@ -50,10 +50,10 @@ errors:
   "14":
     title: "Wheel dropped / navigation failed"
     detail: "Navigation cannot proceed."
-    action: "Move Alfred to open floor space and restart clean."
+    action: "Move Roomba to open floor space and restart clean."
   "15":
     title: "Navigation problem"
-    detail: "Alfred cannot build or follow a path."
+    detail: "Roomba cannot build or follow a path."
     action: "Clear clutter; ensure good lighting; retry."
   "16":
     title: "Battery issue"
@@ -78,7 +78,7 @@ errors:
   "24":
     title: "Localization failed"
     detail: "Lost track of position."
-    action: "Carry Alfred to Home Base and start a new mission."
+    action: "Carry Roomba to Home Base and start a new mission."
   "25":
     title: "Vacuum stalled"
     detail: "Suction path blocked."
@@ -86,7 +86,7 @@ errors:
   "26":
     title: "Battery overheating"
     detail: "Battery temperature too high."
-    action: "Let Alfred cool on a hard floor; do not charge until cool."
+    action: "Let Roomba cool on a hard floor; do not charge until cool."
 # TODO(notReady mapping, Alfred 2026-11-14): community 9xx drivers
 # (steve-gregory/irobot-manager, SmartThings "Roomba 980 reverse engineering",
 # jeremywillans/ha-rest980-roomba) give 1 = stuck, 7 = not upright / tilted,
@@ -103,7 +103,7 @@ not_ready:
   "1":
     title: "Near full / near empty battery"
     detail: "Battery state prevents starting."
-    action: "Charge Alfred before starting a clean."
+    action: "Charge Roomba before starting a clean."
   "2":
     title: "Uneven ground"
     detail: "Robot is not sitting level, so it will not start."
@@ -111,7 +111,7 @@ not_ready:
   "3":
     title: "Path blocked"
     detail: "Start location is obstructed."
-    action: "Clear the area around Alfred."
+    action: "Clear the area around Roomba."
   "4":
     title: "Not on flat surface"
     detail: "Robot is tilted or lifted."
@@ -138,7 +138,7 @@ not_ready:
     action: "Check accessories; N/A for bare 960."
   "15":
     title: "Charging — settling on the dock"
-    detail: "Seen briefly right after Alfred docks: it is charging and not yet ready to accept a new command. It clears on its own within a few seconds."
+    detail: "Seen briefly right after Roomba docks: it is charging and not yet ready to accept a new command. It clears on its own within a few seconds."
     action: "No action needed — wait a moment and retry."
   # 16 is the 9xx bin-full notReady code (seen live on the 960 with bin.full=true,
   # 2026-11-14). It was mislabelled "Just docked / busy" in 0.9.1.

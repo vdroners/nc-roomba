@@ -77,6 +77,18 @@ class ErrorDecoderServiceTest extends TestCase
 		$this->assertSame('not_ready', $d['kind']);
 	}
 
+	public function testCopyUsesGenericRobotName(): void
+	{
+		// 0.12.1 made "Roomba" the default name; "Alfred" is the OpenClaw
+		// assistant, not the robot. No decoded copy may call the robot Alfred.
+		$raw = (string) file_get_contents(dirname(__DIR__, 3) . '/knowledge/error_codes.json');
+		$this->assertStringNotContainsString('Alfred', $raw);
+		foreach ([[9999, 0], [0, 77]] as [$e, $n]) {
+			$d = $this->svc->decode($e, $n);
+			$this->assertStringNotContainsString('Alfred', $d['title'] . $d['detail'] . $d['action']);
+		}
+	}
+
 	public function testUnknownFallsBack(): void
 	{
 		$d = $this->svc->decode(9999, 0);

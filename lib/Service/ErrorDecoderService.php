@@ -49,7 +49,7 @@ class ErrorDecoderService
 				'kind' => 'error',
 				'title' => 'Unknown error ' . $error,
 				'detail' => 'No catalog entry for this error code.',
-				'action' => 'Check Alfred status lights and retry; consult OPERATOR.md.',
+				'action' => 'Check Roomba status lights and retry; consult OPERATOR.md.',
 			];
 		}
 		if ($bin === 'full' || $notReady === self::NOT_READY_BIN_FULL) {
@@ -82,7 +82,7 @@ class ErrorDecoderService
 				'code' => $notReady,
 				'kind' => 'not_ready',
 				'title' => 'Not ready yet',
-				'detail' => 'Alfred is briefly busy (often charging or settling on the dock) and is not ready for that command right now. This usually clears on its own.',
+				'detail' => 'Roomba is briefly busy (often charging or settling on the dock) and is not ready for that command right now. This usually clears on its own.',
 				'action' => 'Wait a few seconds and try again.',
 			];
 		}

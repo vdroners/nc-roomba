@@ -10,7 +10,7 @@
 	<noscript>
 		<div style="padding:24px;font-family:system-ui,sans-serif;">
 			<h1>NC Roomba</h1>
-			<p>JavaScript is required to control Alfred.</p>
+			<p>JavaScript is required to control the robot.</p>
 		</div>
 	</noscript>
 </div>
