@@ -38,6 +38,18 @@ describe('status hero', () => {
 		expect(heroStatus({ ...base, bin: 'full', error: 5 }).label).toBe('Attention')
 	})
 
+	it('tells you to empty and press Home after a bin-full stop-before-dock', () => {
+		const s = heroStatus({
+			...base,
+			phase: 'pause',
+			cycle: 'clean',
+			bin: 'full',
+			bin_full_stop: { enabled: true, fired: true, at: '2026-11-14T20:00:00.000Z', seq: 1, phase: 'hmPostMsn' },
+		})
+		expect(s.label).toBe('Bin full')
+		expect(s.detail).toMatch(/press Home/i)
+	})
+
 	it('confirms a just-emptied bin', () => {
 		expect(heroStatus(base, { binEmptied: true }).detail).toMatch(/Bin emptied/)
 	})

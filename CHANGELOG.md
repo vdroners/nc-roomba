@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.6] - 2026-11-14
+
+### Added
+- **Stop before docking when the bin is full** (default on). The dock sits
+  under a bookshelf, so emptying the bin there is awkward. When a mission
+  heads home (`hmPostMsn`, `hmMidMsn`, or `hmUsrDock`) with a full bin, the
+  bridge pauses the robot where it is and Nextcloud notifies: "Roomba stopped
+  before docking — bin is full. Empty it, then press Home to send it to
+  charge." Fires once per mission; a user Home / Dock command is never
+  intercepted, so you can still send it to charge after emptying. Toggle is in
+  Settings and stored in the bridge config (not a robot firmware preference).
+
 ## [0.12.5] - 2026-11-14
 
 ### Fixed

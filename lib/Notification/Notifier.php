@@ -55,6 +55,9 @@ class Notifier implements INotifier
 			case 'bin_full':
 				$notification->setParsedSubject($l->t('%s dust bin is full — empty before the next mission', [$robot]));
 				break;
+			case 'bin_full_stopped':
+				$notification->setParsedSubject($l->t('%s stopped before docking — bin is full. Empty it, then press Home to send it to charge.', [$robot]));
+				break;
 			case 'low_battery':
 				$pct = (string) ($params['battery_pct'] ?? '?');
 				$notification->setParsedSubject($l->t('%1$s battery low (%2$s%%)', [$robot, $pct]));

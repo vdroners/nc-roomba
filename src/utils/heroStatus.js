@@ -46,6 +46,14 @@ export function heroStatus(state, opts = {}) {
 	}
 	// A full bin outranks docked/charging/busy: it never clears by waiting.
 	if (isBinFull(state)) {
+		const stopped = Boolean(state.bin_full_stop && state.bin_full_stop.fired && HELD.has(phase))
+		if (stopped) {
+			return {
+				label: 'Bin full',
+				detail: 'Stopped before docking — empty the bin, then press Home to send it to charge.',
+				tone: 'warn',
+			}
+		}
 		return { label: 'Bin full', detail: 'Empty the bin, push it back in until it clicks, then press Clean.', tone: 'warn' }
 	}
 	if (HELD.has(phase) && cleaning) {

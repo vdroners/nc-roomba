@@ -67,6 +67,17 @@
 					@update:checked="prefs.always_finish = $event">
 					Always finish (keep cleaning when the bin fills)
 				</NcCheckboxRadioSwitch>
+				<NcCheckboxRadioSwitch
+					:checked="prefs.stop_before_dock_when_bin_full"
+					:disabled="locked"
+					type="switch"
+					data-testid="stop-before-dock"
+					@update:checked="prefs.stop_before_dock_when_bin_full = $event">
+					Stop before docking when the bin is full
+				</NcCheckboxRadioSwitch>
+				<p class="nc-roomba-muted">
+					Pauses the robot where it is so you can empty the bin, then press Home to send it to charge.
+				</p>
 
 				<div class="nc-roomba-actions">
 					<NcButton type="primary" :disabled="locked || !prefsDirty" @click="savePrefs">
@@ -119,6 +130,7 @@ function editableCopy(preferences) {
 		cleaning_passes: p.cleaning_passes || 'auto',
 		edge_clean: p.edge_clean !== false,
 		always_finish: p.always_finish !== false,
+		stop_before_dock_when_bin_full: p.stop_before_dock_when_bin_full !== false,
 	}
 }
 

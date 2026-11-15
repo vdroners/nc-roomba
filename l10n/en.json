@@ -12,6 +12,8 @@
 		"Connected": "Connected",
 		"Disconnected": "Disconnected",
 		"Save": "Save",
-		"Cancel": "Cancel"
+		"Cancel": "Cancel",
+		"Stop before docking when the bin is full": "Stop before docking when the bin is full",
+		"%s stopped before docking — bin is full. Empty it, then press Home to send it to charge.": "%s stopped before docking — bin is full. Empty it, then press Home to send it to charge."
 	}
 }

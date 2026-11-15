@@ -21,9 +21,15 @@ const { constants } = require('node:crypto')
 // Patch tls.connect for the robot's fw2 TLS stack BEFORE dorita980 loads.
 require('./tlsLegacy')
 const dorita980 = require('dorita980')
-const { normalizeState } = require('./stateNormalizer')
+const { normalizeBin, normalizeState } = require('./stateNormalizer')
 const { WifiHelperClient } = require('./wifiHelperClient')
 const { MissionLog } = require('./missionLog')
+const {
+	binFullStopDto,
+	loadBridgeConfig,
+	saveBridgeConfig,
+	shouldStopBeforeDock,
+} = require('./binFullStop')
 
 const BRIDGE_VERSION = require('../package.json').version
 
@@ -198,6 +204,16 @@ class RobotManager extends EventEmitter {
 			updated_at: new Date().toISOString(),
 		}
 		this._softapRunning = false
+
+		// App-level setting (not a robot firmware preference): pause before the
+		// robot tucks itself under a hard-to-reach dock when the bin is full.
+		const bridgeCfg = loadBridgeConfig(env, { warn: (m) => this.log(m) })
+		this.bridgeConfigPath = bridgeCfg.path
+		this.stopBeforeDockWhenBinFull = bridgeCfg.stop_before_dock_when_bin_full !== false
+		this.binFullStopFired = bridgeCfg.bin_full_stop_fired === true
+		this.binFullStopSeq = Number(bridgeCfg.bin_full_stop_seq) || 0
+		this.binFullStopAt = bridgeCfg.bin_full_stop_at || null
+		this.binFullStopPhase = bridgeCfg.bin_full_stop_phase || null
 	}
 
 	/**
@@ -515,6 +531,13 @@ class RobotManager extends EventEmitter {
 			bridge_version: BRIDGE_VERSION,
 			uptime_s: Math.round((Date.now() - this.startedAt) / 1000),
 			name: this.env.ROBOT_NAME || null,
+			bin_full_stop: binFullStopDto({
+				enabled: this.stopBeforeDockWhenBinFull,
+				fired: this.binFullStopFired,
+				at: this.binFullStopAt,
+				seq: this.binFullStopSeq,
+				phase: this.binFullStopPhase,
+			}),
 		})
 	}
 
@@ -593,6 +616,8 @@ class RobotManager extends EventEmitter {
 			edge_clean: this.raw.openOnly !== true,
 			cleaning_passes: this.raw.noAutoPasses !== true ? 'auto' : (this.raw.twoPass === true ? 'two' : 'one'),
 			always_finish: this.raw.binPause !== true,
+			// Bridge-owned (not a robot firmware key). Default on.
+			stop_before_dock_when_bin_full: this.stopBeforeDockWhenBinFull !== false,
 			raw: {
 				carpetBoost: this.raw.carpetBoost ?? null,
 				vacHigh: this.raw.vacHigh ?? null,
@@ -630,8 +655,17 @@ class RobotManager extends EventEmitter {
 		if (typeof prefs.always_finish === 'boolean') {
 			delta.binPause = !prefs.always_finish
 		}
+		const hasLocal = typeof prefs.stop_before_dock_when_bin_full === 'boolean'
+		if (hasLocal) {
+			this.stopBeforeDockWhenBinFull = prefs.stop_before_dock_when_bin_full
+			this.#persistBridgeConfig()
+			this.#publish()
+		}
 
 		if (Object.keys(delta).length === 0) {
+			if (hasLocal) {
+				return { ...(await this.getPreferences()), confirmed: true }
+			}
 			throw this.#httpError(400, 'no recognised preference in payload')
 		}
 
@@ -1190,7 +1224,29 @@ class RobotManager extends EventEmitter {
 		this.raw = Object.assign({}, this.raw, state || {})
 		this.connected = true
 		this.#trackMission()
+		this.#maybeStopBeforeDock()
 		this.#publish()
+	}
+
+	/**
+	 * Apply a raw-state patch as if the robot published it over MQTT.
+	 * Used by tests to simulate an auto return-home without sending a dock
+	 * command (which would be a user-initiated dock and must not be intercepted).
+	 * Not exposed over HTTP.
+	 *
+	 * @param {object} [patch]
+	 * @returns {object} normalized state after the ingest
+	 */
+	applyRawState(patch = {}) {
+		const next = { ...patch }
+		if (patch.cleanMissionStatus) {
+			next.cleanMissionStatus = Object.assign({}, this.raw.cleanMissionStatus, patch.cleanMissionStatus)
+		}
+		if (patch.bin) {
+			next.bin = Object.assign({}, this.raw.bin, patch.bin)
+		}
+		this.#ingest(next)
+		return this.getState()
 	}
 
 	/**
@@ -1217,6 +1273,12 @@ class RobotManager extends EventEmitter {
 				cycle: String(mission.cycle),
 				battery_start: numOrNull(this.raw.batPct),
 				n_mssn_start: numOrNull((this.raw.bbmssn || {}).nMssn),
+			}
+			if (this.binFullStopFired) {
+				this.binFullStopFired = false
+				this.binFullStopAt = null
+				this.binFullStopPhase = null
+				this.#persistBridgeConfig()
 			}
 		} else if (!running && this.missionStartedAt) {
 			this.#finishMission(mission)
@@ -1327,6 +1389,77 @@ class RobotManager extends EventEmitter {
 	 */
 	log(message) {
 		console.log(`[roomba] ${message}`)
+	}
+
+	/**
+	 * If the robot just started heading home with a full bin, pause it where
+	 * it is so the operator can empty the bin, then press Home.
+	 *
+	 * In mock mode the pause is applied in this tick (same ingest / publish).
+	 * On a live robot the MQTT handler must not block, so the pause is sent
+	 * on the next turn of the event loop via action('pause').
+	 */
+	#maybeStopBeforeDock() {
+		const mission = this.raw.cleanMissionStatus || {}
+		const last = this.lastCommand || {}
+		if (!shouldStopBeforeDock({
+			enabled: this.stopBeforeDockWhenBinFull !== false,
+			alreadyFired: this.binFullStopFired === true,
+			bin: normalizeBin(this.raw.bin),
+			phase: typeof mission.phase === 'string' ? mission.phase : null,
+			cycle: typeof mission.cycle === 'string' ? mission.cycle : null,
+			lastCommand: last.action || null,
+			lastCommandAt: last.at || null,
+			missionStartedAt: this.missionStartedAt,
+		})) {
+			return
+		}
+
+		const triggerPhase = mission.phase
+		this.binFullStopFired = true
+		this.binFullStopSeq = (Number(this.binFullStopSeq) || 0) + 1
+		this.binFullStopAt = new Date().toISOString()
+		this.binFullStopPhase = triggerPhase
+		this.#persistBridgeConfig()
+		this.log(`bin full — pausing before dock (phase=${triggerPhase} seq=${this.binFullStopSeq})`)
+
+		if (this.mock) {
+			mission.phase = 'pause'
+			this.lastCommand = {
+				action: 'pause',
+				method: 'mock',
+				at: this.binFullStopAt,
+				result: 'sent',
+				reason: 'bin_full_stop_before_dock',
+			}
+			return
+		}
+
+		setImmediate(() => {
+			this.action('pause')
+				.then(() => {
+					if (this.lastCommand) {
+						this.lastCommand.reason = 'bin_full_stop_before_dock'
+					}
+				})
+				.catch((err) => {
+					// Let the next state tick retry rather than leave it driving
+					// under the shelf with the latch stuck on.
+					this.binFullStopFired = false
+					this.#persistBridgeConfig()
+					this.log(`bin-full stop-before-dock pause failed: ${err && err.message ? err.message : err}`)
+				})
+		})
+	}
+
+	#persistBridgeConfig() {
+		saveBridgeConfig(this.bridgeConfigPath, {
+			stop_before_dock_when_bin_full: this.stopBeforeDockWhenBinFull,
+			bin_full_stop_seq: this.binFullStopSeq,
+			bin_full_stop_fired: this.binFullStopFired,
+			bin_full_stop_at: this.binFullStopAt,
+			bin_full_stop_phase: this.binFullStopPhase,
+		}, { warn: (m) => this.log(m) })
 	}
 
 	#publish() {
