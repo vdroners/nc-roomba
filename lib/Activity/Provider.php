@@ -16,6 +16,7 @@ class Provider implements IProvider
 	public const SUBJECT_MISSION_COMPLETE = 'mission_complete';
 	public const SUBJECT_MISSION_ERROR = 'mission_error';
 	public const SUBJECT_BIN_FULL = 'bin_full';
+	public const SUBJECT_BIN_FULL_STOPPED = 'bin_full_stopped';
 	public const SUBJECT_LOW_BATTERY = 'low_battery';
 
 	public function __construct(
@@ -52,6 +53,9 @@ class Provider implements IProvider
 				break;
 			case self::SUBJECT_BIN_FULL:
 				$event->setParsedSubject($l->t('%s dust bin is full', [$robot]));
+				break;
+			case self::SUBJECT_BIN_FULL_STOPPED:
+				$event->setParsedSubject($l->t('%s stopped before docking — bin is full. Empty it, then press Home to send it to charge.', [$robot]));
 				break;
 			case self::SUBJECT_LOW_BATTERY:
 				$pct = (string) ($params['battery_pct'] ?? '?');

@@ -227,6 +227,15 @@ function normalizeState(raw, meta = {}) {
 			uptime_s: num(meta.uptime_s) ?? 0,
 			mock: Boolean(meta.mock),
 		},
+		// Present (never omitted) so a missing field means "the bridge is older",
+		// not "the setting is off". The bridge fills this from its own config.
+		bin_full_stop: meta.bin_full_stop || {
+			enabled: true,
+			fired: false,
+			at: null,
+			seq: null,
+			phase: null,
+		},
 	}
 }
 

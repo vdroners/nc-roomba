@@ -52,6 +52,13 @@ class NotifyService
 		$this->publishActivity(ActivityProvider::SUBJECT_BIN_FULL, $params);
 	}
 
+	public function binFullStopped(string $robotName): void
+	{
+		$params = ['robot' => $robotName];
+		$this->notifyUsers('bin_full_stopped', $params);
+		$this->publishActivity(ActivityProvider::SUBJECT_BIN_FULL_STOPPED, $params);
+	}
+
 	public function lowBattery(string $robotName, int $pct): void
 	{
 		$params = ['robot' => $robotName, 'battery_pct' => $pct];

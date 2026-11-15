@@ -13,6 +13,7 @@ use OCA\NcRoomba\Db\TelemetrySampleMapper;
 use OCA\NcRoomba\Db\CommandAuditMapper;
 use OCA\NcRoomba\AppInfo\Application;
 use OCA\NcRoomba\Util\AlertEdges;
+use OCA\NcRoomba\Util\BinFullStopAlert;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\IConfig;
 use Psr\Log\LoggerInterface;
@@ -39,6 +40,8 @@ class MissionService
 	private const ODOMETER_PREFIX = 'mission_odometer_';
 	/** appconfig key prefix: end time of the last mission we notified about, per robot. */
 	private const MISSION_NOTIFIED_PREFIX = 'mission_notified_end_';
+	/** appconfig key prefix: last bin-full-stop event seq notified, per robot. */
+	private const BIN_FULL_STOP_CURSOR_PREFIX = 'bin_full_stop_cursor_';
 
 	public function __construct(
 		private MissionMapper $missions,
@@ -220,6 +223,8 @@ class MissionService
 			$this->notify->binFull($name);
 		}
 
+		$this->maybeNotifyBinFullStop($robotId, $name, $state);
+
 		$phaseOrNull = $phase !== '' ? $phase : null;
 		if (AlertEdges::confirmedRise(
 			AlertEdges::batteryLow($battery, $phaseOrNull),
@@ -228,6 +233,33 @@ class MissionService
 		)) {
 			$this->notify->lowBattery($name, (int) $battery);
 		}
+	}
+
+	/**
+	 * Fire once per bridge event seq when the robot was paused before docking
+	 * with a full bin. The cursor lives in appconfig so a new cron process
+	 * does not re-notify the same pause.
+	 *
+	 * @param array<string, mixed> $state
+	 */
+	private function maybeNotifyBinFullStop(int $robotId, string $name, array $state): void
+	{
+		$event = is_array($state['bin_full_stop'] ?? null) ? $state['bin_full_stop'] : null;
+		$seq = BinFullStopAlert::seqToNotify($event, $this->lastBinFullStopSeq($robotId));
+		if ($seq === null) {
+			return;
+		}
+		$this->config->setAppValue(Application::APP_ID, self::BIN_FULL_STOP_CURSOR_PREFIX . $robotId, (string) $seq);
+		$this->notify->binFullStopped($name);
+	}
+
+	private function lastBinFullStopSeq(int $robotId): int
+	{
+		return (int) $this->config->getAppValue(
+			Application::APP_ID,
+			self::BIN_FULL_STOP_CURSOR_PREFIX . $robotId,
+			'0',
+		);
 	}
 
 	/**
